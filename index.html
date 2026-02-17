@@ -1,9 +1,9 @@
 <!DOCTYPE html>
 <html lang="th">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    
     <!-- SEO & Social Sharing -->
     <title>TripMate - แผนการเดินทางของคุณ</title>
     <meta name="description" content="วางแผนการเดินทาง เช็คเที่ยวบิน และดูพยากรณ์อากาศในที่เดียว ใช้งานแบบออฟไลน์ได้">
@@ -13,25 +13,25 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="TripMate">
-    <!-- Icon for iOS Home Screen (Requires internet to load first time) -->
+    <!-- Icon for iOS Home Screen -->
     <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/2200/2200326.png">
 
-    <!-- Open Graph / Facebook / Line -->
+    <!-- Open Graph -->
     <meta property="og:type" content="website">
     <meta property="og:title" content="TripMate - Travel Planner">
     <meta property="og:description" content="ดูแผนการเดินทางของฉัน พร้อมรายละเอียดที่พักและจุดท่องเที่ยว">
     <meta property="og:image" content="https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?ixlib=rb-4.0.3&auto=format&fit=crop&w=1200&q=80">
 
-    <!-- Favicon (Emoji Data URI) -->
+    <!-- Favicon -->
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>✈️</text></svg>">
     
     <!-- React & ReactDOM -->
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-
-    <!-- Babel for JSX -->
+    
+    <!-- Babel -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-
+    
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
@@ -47,12 +47,21 @@
                             subtext: '#9ca3af',
                             border: '#374151'
                         }
+                    },
+                    animation: {
+                        'fade-in': 'fadeIn 0.5s ease-out',
+                    },
+                    keyframes: {
+                        fadeIn: {
+                            '0%': { opacity: '0', transform: 'translateY(10px)' },
+                            '100%': { opacity: '1', transform: 'translateY(0)' },
+                        }
                     }
                 }
             }
         }
     </script>
-
+    
     <!-- FontAwesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Google Fonts -->
@@ -63,18 +72,10 @@
             font-family: 'Prompt', sans-serif;
             -webkit-tap-highlight-color: transparent;
         }
-
-        .no-scrollbar::-webkit-scrollbar {
-            display: none;
-        }
-
-        .no-scrollbar {
-            -ms-overflow-style: none;
-            scrollbar-width: none;
-        }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
     </style>
 </head>
-
 <body class="bg-gray-50 text-gray-800 dark:bg-gray-900 dark:text-gray-100 transition-colors duration-200">
     <div id="root"></div>
 
@@ -84,17 +85,19 @@
         // --- Helpers ---
         const generateId = () => Math.random().toString(36).substr(2, 9);
 
-        // Empty state for new users
+        // --- DATA_MARKER_START ---
         const emptyTripData = {
             tripName: "",
             destination: "",
-            lat: 13.7563, // Default Bangkok
+            lat: 13.7563, 
             lon: 100.5018,
             startDate: "",
             endDate: "",
             itinerary: [],
-            documents: []
+            documents: [],
+            railMapImage: "/assets/202305_number_en.pdf" 
         };
+        // --- DATA_MARKER_END ---
 
         const parseCSVLine = (text) => {
             const re_value = /(?!\s*$)\s*(?:'([^']*)'|"([^"]*)"|([^,'"\s\\]*(?:\s+[^,'"\s\\]+)*))\s*(?:,|$)/g;
@@ -128,16 +131,16 @@
         };
 
         const getIconBg = (type) => {
-            switch (type) {
+            switch(type) {
                 case 'flight': return 'bg-blue-100 text-blue-600 dark:bg-blue-900 dark:text-blue-300';
                 case 'hotel': return 'bg-purple-100 text-purple-600 dark:bg-purple-900 dark:text-purple-300';
                 case 'food': return 'bg-orange-100 text-orange-600 dark:bg-orange-900 dark:text-orange-300';
                 default: return 'bg-green-100 text-green-600 dark:bg-green-900 dark:text-green-300';
             }
         };
-
+        
         const getIconClass = (type) => {
-            switch (type) {
+            switch(type) {
                 case 'flight': return 'fa-plane-departure';
                 case 'hotel': return 'fa-bed';
                 case 'food': return 'fa-utensils';
@@ -177,7 +180,7 @@
 
         // --- Components ---
 
-        // 0. Welcome Screen (Placeholder)
+        // 0. Welcome Screen
         const WelcomeScreen = ({ onImport, onCreate, fileInputRef }) => {
             return (
                 <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-gray-50 dark:bg-gray-900 text-center animate-fade-in">
@@ -186,23 +189,23 @@
                     </div>
                     <h1 className="text-3xl font-bold text-gray-800 dark:text-white mb-2">TripMate</h1>
                     <p className="text-gray-500 dark:text-gray-400 mb-8 max-w-xs">วางแผนการเดินทางของคุณได้ง่ายๆ รองรับการนำเข้าไฟล์ CSV</p>
-
+                    
                     <div className="space-y-4 w-full max-w-xs">
-                        <button
+                        <button 
                             onClick={() => fileInputRef.current.click()}
                             className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl shadow-lg transition-transform active:scale-95 flex items-center justify-center space-x-2"
                         >
                             <i className="fa-solid fa-file-csv text-xl"></i>
                             <span>นำเข้าไฟล์ CSV</span>
                         </button>
-
+                        
                         <div className="relative flex py-2 items-center">
                             <div className="flex-grow border-t border-gray-300 dark:border-gray-700"></div>
                             <span className="flex-shrink-0 mx-4 text-gray-400 text-sm">หรือ</span>
                             <div className="flex-grow border-t border-gray-300 dark:border-gray-700"></div>
                         </div>
 
-                        <button
+                        <button 
                             onClick={onCreate}
                             className="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 font-bold py-4 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
                         >
@@ -227,7 +230,7 @@
             return (
                 <div className="relative bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm ml-4 mb-4 border border-gray-100 dark:border-gray-700 group transition-colors">
                     <div className={`absolute -left-[25px] top-4 w-4 h-4 rounded-full border-2 border-white dark:border-gray-900 ${getIconBg(item.type).split(' ')[0]} ${getIconBg(item.type).split(' ')[1]}`}></div>
-
+                    
                     <div className="flex justify-between items-start">
                         <div className="flex-1 pr-2">
                             <div className="flex items-center space-x-2 mb-1 flex-wrap gap-y-1">
@@ -243,14 +246,14 @@
                                 )}
                             </div>
                             <h4 className="font-bold text-gray-800 dark:text-white text-lg leading-tight">{item.title}</h4>
-
+                            
                             {item.location && (
                                 <div className="flex items-center mt-1 text-gray-600 dark:text-gray-400 text-sm cursor-pointer hover:text-blue-500" onClick={handleMapClick}>
-                                    <i className="fa-solid fa-location-dot text-xs mr-1 text-red-400"></i>
+                                    <i className="fa-solid fa-location-dot text-xs mr-1 text-red-400"></i> 
                                     <span className="underline decoration-dotted">{item.location}</span>
                                 </div>
                             )}
-
+                            
                             {item.details && (
                                 <div className="mt-2 bg-gray-50 dark:bg-gray-700/50 p-2 rounded border border-gray-100 dark:border-gray-700 text-sm text-gray-600 dark:text-gray-300">
                                     {item.details}
@@ -262,9 +265,9 @@
                                 </div>
                             )}
                         </div>
-
+                        
                         <div className="flex flex-col space-y-2 ml-2">
-                            {(item.mapUrl || item.location) && (
+                             {(item.mapUrl || item.location) && (
                                 <button onClick={handleMapClick} className="w-8 h-8 rounded-full bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400 flex items-center justify-center hover:bg-green-100 dark:hover:bg-green-900/50">
                                     <i className="fa-solid fa-map-location-dot"></i>
                                 </button>
@@ -286,6 +289,7 @@
             const tabs = [
                 { id: 'home', icon: 'fa-map-location-dot', label: 'แผนรวม' },
                 { id: 'day', icon: 'fa-calendar-day', label: 'รายวัน' },
+                { id: 'tools', icon: 'fa-toolbox', label: 'เครื่องมือ' }, 
                 { id: 'docs', icon: 'fa-folder-open', label: 'เอกสาร' },
                 { id: 'weather', icon: 'fa-cloud-sun', label: 'อากาศ' },
                 { id: 'settings', icon: 'fa-gear', label: 'ตั้งค่า' },
@@ -294,7 +298,7 @@
             return (
                 <div className="fixed bottom-0 left-0 w-full bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 pb-safe pt-2 px-2 flex justify-between items-center z-50 h-16 shadow-lg pb-4 transition-colors">
                     {tabs.map(tab => (
-                        <button
+                        <button 
                             key={tab.id}
                             onClick={() => setActiveTab(tab.id)}
                             className={`flex flex-col items-center justify-center w-full space-y-1 ${activeTab === tab.id ? 'text-blue-600 dark:text-blue-400' : 'text-gray-400 dark:text-gray-500'}`}
@@ -307,10 +311,150 @@
             );
         };
 
-        // 3. Add/Edit Item Modal
+        // 3. Tools View
+        const ToolsView = ({ tripData, setTripData }) => {
+            const [amount, setAmount] = useState(1000);
+            const [rate, setRate] = useState(0.23);
+            const [isJpyToThb, setIsJpyToThb] = useState(true);
+            const mapInputRef = useRef(null);
+
+            // Auto-fetch rate on mount
+            useEffect(() => {
+                fetchRate();
+            }, []);
+
+            const fetchRate = async () => {
+                try {
+                    const res = await fetch('https://open.er-api.com/v6/latest/JPY');
+                    const data = await res.json();
+                    if(data && data.rates && data.rates.THB) {
+                        setRate(data.rates.THB);
+                    }
+                } catch(e) { console.error('Rate fetch failed', e); }
+            };
+
+            const phrases = [
+                { t: 'สวัสดี', j: 'Konnichiwa', p: 'คอน-นิ-ชิ-วะ' },
+                { t: 'ขอบคุณ', j: 'Arigatou Gozaimasu', p: 'อา-ริ-กา-โตะ โก-ไซ-มัส' },
+                { t: 'ขอโทษ/รบกวนหน่อย', j: 'Sumimasen', p: 'สุ-มิ-มา-เซ็น' },
+                { t: 'อันนี้เท่าไหร่?', j: 'Kore wa ikura desu ka?', p: 'โค-เระ วะ อิ-คุ-ระ เดส-ก๊ะ?' },
+                { t: 'ห้องน้ำอยู่ไหน?', j: 'Toire wa doko desu ka?', p: 'โท-อิ-เระ วะ โด-โกะ เดส-ก๊ะ?' },
+                { t: 'ขอน้ำเปล่า', j: 'Mizu o kudasai', p: 'มิ-สุ โอะ คุ-ดา-ไซ' },
+                { t: 'เช็คบิล', j: 'Okaikei onegaishimasu', p: 'โอ-ไค-เค โอ-เน-ไก-ชิ-มัส' },
+                { t: 'สถานีรถไฟ', j: 'Eki', p: 'เอะ-กิ' },
+            ];
+
+            const handleMapUpload = (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                if (file.size > 1024 * 1024 * 5) { alert("ไฟล์ใหญ่เกิน 5MB"); return; }
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                    setTripData(prev => ({ ...prev, railMapImage: reader.result }));
+                };
+                reader.readAsDataURL(file);
+            };
+
+            const isPdf = (url) => {
+                return url && (url.toLowerCase().endsWith('.pdf') || url.startsWith('data:application/pdf'));
+            };
+
+            return (
+                <div className="p-4 pb-24 pt-6 space-y-8">
+                    <h2 className="text-2xl font-bold text-gray-800 dark:text-white">เครื่องมือช่วยเที่ยว</h2>
+
+                    {/* Currency */}
+                    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-5 border border-gray-100 dark:border-gray-700">
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="font-bold text-lg text-gray-800 dark:text-white flex items-center">
+                                <i className="fa-solid fa-coins text-yellow-500 mr-2"></i> แปลงค่าเงิน
+                            </h3>
+                            <button onClick={fetchRate} className="text-xs bg-blue-50 text-blue-600 px-2 py-1 rounded hover:bg-blue-100">
+                                <i className="fa-solid fa-rotate mr-1"></i>
+                            </button>
+                        </div>
+                        <div className="flex items-center justify-between space-x-4 mb-4">
+                            <div className="flex-1">
+                                <label className="text-xs text-gray-500 block mb-1">{isJpyToThb ? 'JPY (เยน)' : 'THB (บาท)'}</label>
+                                <input type="number" value={amount} onChange={e => setAmount(parseFloat(e.target.value))} className="w-full p-2 bg-gray-50 dark:bg-gray-700 rounded-lg border dark:border-gray-600 text-lg font-bold text-gray-800 dark:text-white" />
+                            </div>
+                            <button onClick={() => setIsJpyToThb(!isJpyToThb)} className="mt-4 text-blue-500 bg-blue-50 dark:bg-blue-900/30 p-2 rounded-full"><i className="fa-solid fa-right-left"></i></button>
+                            <div className="flex-1">
+                                <label className="text-xs text-gray-500 block mb-1">{isJpyToThb ? 'THB (บาท)' : 'JPY (เยน)'}</label>
+                                <div className="w-full p-2 bg-gray-100 dark:bg-gray-600 rounded-lg text-lg font-bold text-gray-700 dark:text-gray-200 border border-transparent">
+                                    {isJpyToThb ? (amount * rate).toFixed(2) : (amount / rate).toFixed(2)}
+                                </div>
+                            </div>
+                        </div>
+                        <div className="flex items-center justify-end space-x-2">
+                            <label className="text-xs text-gray-400">Rate (1 JPY):</label>
+                            <input type="number" step="0.001" value={rate} onChange={e => setRate(parseFloat(e.target.value))} className="w-20 p-1 text-xs text-center border rounded bg-transparent dark:text-gray-400 dark:border-gray-600" />
+                        </div>
+                    </div>
+
+                    {/* Phrasebook */}
+                    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-5 border border-gray-100 dark:border-gray-700">
+                        <h3 className="font-bold text-lg mb-4 text-gray-800 dark:text-white flex items-center">
+                            <i className="fa-solid fa-comments text-green-500 mr-2"></i> ภาษาญี่ปุ่นฉุกเฉิน
+                        </h3>
+                        <div className="space-y-3">
+                            {phrases.map((p, idx) => (
+                                <div key={idx} className="flex justify-between items-center border-b dark:border-gray-700 pb-2 last:border-0 last:pb-0">
+                                    <div>
+                                        <p className="font-bold text-gray-800 dark:text-white text-sm">{p.t}</p>
+                                        <p className="text-xs text-gray-400">{p.p}</p>
+                                    </div>
+                                    <div className="text-right">
+                                        <p className="text-blue-600 dark:text-blue-400 font-medium text-sm">{p.j}</p>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Train Map */}
+                    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-5 border border-gray-100 dark:border-gray-700">
+                        <h3 className="font-bold text-lg mb-4 text-gray-800 dark:text-white flex items-center">
+                            <i className="fa-solid fa-map text-purple-500 mr-2"></i> แผนที่รถไฟ
+                        </h3>
+                        {tripData.railMapImage ? (
+                            <div className="relative">
+                                {isPdf(tripData.railMapImage) || tripData.railMapImage.endsWith('.pdf') ? (
+                                    <div className="w-full">
+                                        <iframe src={tripData.railMapImage} className="w-full h-[400px] rounded-lg border border-gray-200 mb-2"></iframe>
+                                    </div>
+                                ) : (
+                                    <img src={tripData.railMapImage} className="w-full rounded-lg shadow-sm mb-3" />
+                                )}
+                                
+                                <div className="flex flex-col space-y-2 mt-2">
+                                    <a href={tripData.railMapImage} target="_blank" className="w-full text-center bg-blue-600 text-white px-4 py-3 rounded-lg font-bold shadow-md hover:bg-blue-700 transition-colors">
+                                        <i className="fa-solid fa-file-pdf mr-2"></i> ดูแผนที่เต็มจอ (Open PDF)
+                                    </a>
+                                    <div className="flex justify-end">
+                                        <button onClick={() => setTripData(prev => ({...prev, railMapImage: null}))} className="text-xs text-red-500 hover:text-red-700 px-2 py-1">
+                                            <i className="fa-solid fa-trash mr-1"></i> ลบแผนที่
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="text-center py-8 border-2 border-dashed border-gray-200 dark:border-gray-600 rounded-lg">
+                                <i className="fa-solid fa-map-location-dot text-4xl text-gray-300 mb-2"></i>
+                                <p className="text-sm text-gray-500 mb-3">ยังไม่มีบันทึกรูปแผนที่</p>
+                                <button onClick={() => mapInputRef.current.click()} className="bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-300 px-4 py-2 rounded-lg text-sm font-bold hover:bg-purple-200 transition-colors">อัปโหลดรูปแผนที่</button>
+                                <input type="file" ref={mapInputRef} className="hidden" accept="image/*,.pdf" onChange={handleMapUpload} />
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        };
+
+        // 4. Add/Edit Item Modal
         const ItemModal = ({ isOpen, onClose, onSave, initialData, defaultDate }) => {
             if (!isOpen) return null;
-
+            
             const [formData, setFormData] = useState({
                 id: null, type: 'sightseeing', title: '', date: '', time: '', location: '', details: '', notes: '', mapUrl: ''
             });
@@ -338,15 +482,15 @@
                             <div>
                                 <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">ประเภท</label>
                                 <div className="flex space-x-2 mt-1 overflow-x-auto no-scrollbar pb-1">
-                                    {['flight', 'hotel', 'food', 'sightseeing'].map(t => (
-                                        <button key={t} type="button" onClick={() => setFormData({ ...formData, type: t })}
+                                    {['flight','hotel','food','sightseeing'].map(t => (
+                                        <button key={t} type="button" onClick={() => setFormData({...formData, type: t})}
                                             className={`px-3 py-2 rounded-lg text-sm flex items-center space-x-2 whitespace-nowrap border ${formData.type === t ? 'bg-blue-100 dark:bg-blue-900 border-blue-500 dark:border-blue-400 text-blue-700 dark:text-blue-300' : 'bg-gray-50 dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300'}`}>
                                             <i className={`fa-solid ${getIconClass(t)}`}></i><span className="capitalize">{t}</span>
                                         </button>
                                     ))}
                                 </div>
                             </div>
-
+                            
                             <input required name="title" className="w-full p-3 bg-gray-50 dark:bg-gray-700 dark:text-white rounded-xl border border-gray-200 dark:border-gray-600" value={formData.title} onChange={handleChange} placeholder="ชื่อกิจกรรม" />
                             <div className="flex space-x-2">
                                 <input required type="date" name="date" className="w-1/2 p-3 bg-gray-50 dark:bg-gray-700 dark:text-white rounded-xl border border-gray-200 dark:border-gray-600" value={formData.date} onChange={handleChange} />
@@ -366,7 +510,7 @@
             );
         };
 
-        // 4. Itinerary View (All)
+        // 5. Itinerary View (All)
         const ItineraryView = ({ tripData, setTripData, isDarkMode, toggleTheme }) => {
             const [modalOpen, setModalOpen] = useState(false);
             const [editingItem, setEditingItem] = useState(null);
@@ -382,7 +526,7 @@
                 else setTripData(prev => ({ ...prev, itinerary: [...prev.itinerary, item] }));
             };
 
-            const deleteItem = (id) => { if (window.confirm('ยืนยันลบรายการนี้?')) setTripData(prev => ({ ...prev, itinerary: prev.itinerary.filter(i => i.id !== id) })); };
+            const deleteItem = (id) => { if(window.confirm('ยืนยันลบรายการนี้?')) setTripData(prev => ({ ...prev, itinerary: prev.itinerary.filter(i => i.id !== id) })); };
 
             return (
                 <div className="pb-24 pt-4 px-4">
@@ -421,7 +565,7 @@
             );
         };
 
-        // 5. Day View
+        // 6. Day View
         const DayView = ({ tripData, setTripData }) => {
             const [selectedDate, setSelectedDate] = useState(tripData.startDate);
             const [modalOpen, setModalOpen] = useState(false);
@@ -434,7 +578,7 @@
                 if (editingItem) setTripData(prev => ({ ...prev, itinerary: prev.itinerary.map(i => i.id === item.id ? item : i) }));
                 else setTripData(prev => ({ ...prev, itinerary: [...prev.itinerary, item] }));
             };
-            const deleteItem = (id) => { if (window.confirm('ยืนยันลบ?')) setTripData(prev => ({ ...prev, itinerary: prev.itinerary.filter(i => i.id !== id) })); };
+            const deleteItem = (id) => { if(window.confirm('ยืนยันลบ?')) setTripData(prev => ({ ...prev, itinerary: prev.itinerary.filter(i => i.id !== id) })); };
 
             return (
                 <div className="pb-24 pt-4 px-4 h-full flex flex-col">
@@ -460,7 +604,7 @@
             );
         };
 
-        // 6. Documents View
+        // 7. Documents View
         const DocumentsView = ({ tripData, setTripData }) => {
             const fileInputRef = useRef(null);
             const handleFileUpload = (e) => {
@@ -472,7 +616,7 @@
                 };
                 reader.readAsDataURL(file);
             };
-            const deleteDoc = (id) => { if (confirm('ลบเอกสาร?')) setTripData(prev => ({ ...prev, documents: prev.documents.filter(d => d.id !== id) })); };
+            const deleteDoc = (id) => { if(confirm('ลบเอกสาร?')) setTripData(prev => ({ ...prev, documents: prev.documents.filter(d => d.id !== id) })); };
 
             return (
                 <div className="p-4 pb-24 pt-6">
@@ -496,7 +640,7 @@
             );
         };
 
-        // 7. Weather View
+        // 8. Weather View
         const WeatherView = ({ tripData }) => {
             const [data, setData] = useState(null);
             const [loading, setLoading] = useState(false);
@@ -543,7 +687,7 @@
                                         <div className="flex items-center space-x-4">
                                             <div className="w-10 h-10 bg-gray-50 dark:bg-gray-700 rounded-full flex items-center justify-center text-xl"><i className={`fa-solid ${getWeatherIcon(data.weather.daily.weathercode[idx])}`}></i></div>
                                             <div>
-                                                <p className="font-bold text-gray-800 dark:text-white">{new Date(date).toLocaleDateString('th-TH', { weekday: 'long', day: 'numeric' })}</p>
+                                                <p className="font-bold text-gray-800 dark:text-white">{new Date(date).toLocaleDateString('th-TH', { weekday: 'long', day: 'numeric'})}</p>
                                                 <p className="text-xs text-gray-500 dark:text-gray-400"><span className="text-red-400">สูง {data.weather.daily.temperature_2m_max[idx]}°</span> / <span className="text-blue-400"> ต่ำ {data.weather.daily.temperature_2m_min[idx]}°</span></p>
                                             </div>
                                         </div>
@@ -557,25 +701,59 @@
             );
         };
 
-        // 8. Settings & Share
+        // 9. Settings & Share
         const SettingsView = ({ tripData, setTripData, onCSVImport, fileInputRef }) => {
             const [importText, setImportText] = useState('');
+            
             const handleExport = () => navigator.clipboard.writeText(JSON.stringify(tripData)).then(() => alert('คัดลอกข้อมูลแล้ว!'));
+            
             const handleDownloadTemplate = () => {
-                const csv = "Date,Time,Activity,Location,Notes/Travel,Thai Summary\n\"2026-02-27\",09:30,Arrival,Ueno,Skyliner,ถึงสถานีอุเอโนะ";
+                const csv = "Date,Time,Activity,Location,Notes/Travel,Thai Summary,Google Map Link\n\"2026-02-27\",09:30,Arrival,Ueno,Skyliner,ถึงสถานีอุเอโนะ,";
                 const link = document.createElement("a"); link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
                 link.download = "trip_template.csv"; link.click();
             };
+
+            const handleCSVExport = () => {
+                const headers = ["Date", "Time", "Activity", "Location", "Notes/Travel", "Thai Summary", "Google Map Link"];
+                const sorted = [...tripData.itinerary].sort((a, b) => new Date(`${a.date}T${a.time || '00:00'}`) - new Date(`${b.date}T${b.time || '00:00'}`));
+                
+                const rows = sorted.map(item => {
+                    const escape = (t) => {
+                        if (!t) return '';
+                        const str = String(t).replace(/"/g, '""');
+                        return /[",\n]/.test(str) ? `"${str}"` : str;
+                    };
+                    return [
+                        escape(item.date), escape(item.time), escape(item.title),
+                        escape(item.location), escape(item.notes), escape(item.details),
+                        escape(item.mapUrl || '')
+                    ].join(',');
+                });
+
+                const csvContent = "\uFEFF" + [headers.join(','), ...rows].join('\n');
+                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                const link = document.createElement("a");
+                link.href = URL.createObjectURL(blob);
+                link.download = `trip_${(tripData.tripName || 'export').replace(/\s+/g, '_')}.csv`;
+                link.click();
+            };
+            
             const handleImport = () => { try { const p = JSON.parse(importText); if (p.itinerary) { setTripData(p); alert('Success!'); setImportText(''); } } catch (e) { alert('Error!'); } };
 
             return (
                 <div className="p-4 pb-24 pt-6">
                     <h2 className="text-2xl font-bold mb-6 text-gray-800 dark:text-white">ตั้งค่า</h2>
+
                     <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-4 mb-6 border border-gray-100 dark:border-gray-700">
-                        <h3 className="font-bold mb-2 text-gray-800 dark:text-white"><i className="fa-solid fa-file-csv text-orange-500 mr-2"></i>นำเข้า CSV</h3>
-                        <div className="flex space-x-2">
-                            <button onClick={handleDownloadTemplate} className="flex-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 py-2 rounded text-sm">โหลดฟอร์ม</button>
-                            <button onClick={() => fileInputRef.current.click()} className="flex-1 bg-orange-100 dark:bg-orange-900 text-orange-700 dark:text-orange-300 py-2 rounded text-sm font-bold">เลือกไฟล์</button>
+                        <h3 className="font-bold mb-2 text-gray-800 dark:text-white"><i className="fa-solid fa-file-csv text-orange-500 mr-2"></i>จัดการ CSV</h3>
+                        <div className="space-y-2">
+                            <div className="flex space-x-2">
+                                <button onClick={handleDownloadTemplate} className="flex-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 py-2 rounded text-sm">โหลดฟอร์ม</button>
+                                <button onClick={() => fileInputRef.current.click()} className="flex-1 bg-orange-100 dark:bg-orange-900 text-orange-700 dark:text-orange-300 py-2 rounded text-sm font-bold">นำเข้า CSV</button>
+                            </div>
+                            <button onClick={handleCSVExport} className="w-full bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400 py-2 rounded text-sm font-bold border border-green-200 dark:border-green-800 hover:bg-green-100 dark:hover:bg-green-900/50 transition-colors">
+                                <i className="fa-solid fa-file-export mr-2"></i>ส่งออกเป็น CSV
+                            </button>
                         </div>
                     </div>
                     <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-4 mb-6 border border-gray-100 dark:border-gray-700">
@@ -583,7 +761,7 @@
                         <textarea className="w-full bg-gray-50 dark:bg-gray-700 border dark:border-gray-600 rounded p-2 text-sm h-20 text-gray-800 dark:text-white" placeholder="วางโค้ด JSON..." value={importText} onChange={e => setImportText(e.target.value)}></textarea>
                         <button onClick={handleImport} className="w-full bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 font-bold py-2 rounded-lg mt-2">นำเข้า JSON</button>
                     </div>
-                    <button onClick={() => { if (confirm('Reset App?')) { localStorage.removeItem('tripData'); window.location.reload(); } }} className="w-full text-red-500 dark:text-red-400 font-bold text-sm">ล้างข้อมูล (Reset)</button>
+                    <button onClick={() => { if(confirm('Reset App?')) { localStorage.removeItem('tripData'); window.location.reload(); } }} className="w-full text-red-500 dark:text-red-400 font-bold text-sm">ล้างข้อมูล (Reset)</button>
                 </div>
             );
         };
@@ -591,7 +769,11 @@
         // --- Main App ---
         const App = () => {
             const [activeTab, setActiveTab] = useState('home');
-            const [tripData, setTripData] = useState(null); // Null means show Welcome Screen
+            
+            // Logic to check if emptyTripData has been pre-filled (via export)
+            const isPreloaded = emptyTripData.tripName !== "" || emptyTripData.itinerary.length > 0;
+            const [tripData, setTripData] = useState(isPreloaded ? emptyTripData : null); 
+            
             const [isDarkMode, setIsDarkMode] = useState(false);
             const csvInputRef = useRef(null);
 
@@ -599,11 +781,14 @@
                 // Load Theme
                 const savedTheme = localStorage.getItem('theme');
                 if (savedTheme === 'dark') { setIsDarkMode(true); document.documentElement.classList.add('dark'); }
-
-                // Load Data
+                
+                // Load Data - Priority: LocalStorage > Preloaded > Null
                 const savedData = localStorage.getItem('tripData');
                 if (savedData) {
-                    try { setTripData(JSON.parse(savedData)); } catch (e) { }
+                    try { setTripData(JSON.parse(savedData)); } catch(e){}
+                } else if (isPreloaded) {
+                     // If preloaded data exists but nothing in localstorage, use preloaded
+                     setTripData(emptyTripData);
                 }
             }, []);
 
@@ -623,19 +808,12 @@
 
                 // Helper to format filename (Deduplicate and Capitalize)
                 const formatTripName = (name) => {
-                    // Remove extension
                     let clean = name.replace(/\.[^/.]+$/, "");
-
-                    // Handle "Name - Name" duplication pattern
                     const parts = clean.split(' - ');
                     if (parts.length > 1 && parts[0] === parts[1]) {
                         clean = parts[0];
                     }
-
-                    // Replace hyphens/underscores and capitalize
-                    return clean
-                        .replace(/[-_]/g, " ")
-                        .replace(/\w\S*/g, (w) => (w.replace(/^\w/, (c) => c.toUpperCase())));
+                    return clean.replace(/[-_]/g, " ").replace(/\w\S*/g, (w) => (w.replace(/^\w/, (c) => c.toUpperCase())));
                 };
 
                 const tripName = formatTripName(file.name);
@@ -654,16 +832,16 @@
                         const cols = parseCSVLine(line);
                         if (cols[0] && cols[0].trim()) {
                             const d = formatDateForInput(cols[0]);
-                            if (d) {
+                            if(d) {
                                 currentDate = d;
                                 if (!startDate) startDate = d;
-                                endDate = d; // Updates until the last date
+                                endDate = d; 
                             }
                         }
                         if (!currentDate) continue;
-
+                        
                         let timeStr = cols[1] ? cols[1].split('-')[0].trim() : '00:00';
-                        if (!timeStr) timeStr = '00:00';
+                        if(!timeStr) timeStr = '00:00';
                         const title = cols[2] ? cols[2].trim() : '';
                         const summary = cols[5] ? cols[5].trim() : '';
                         if (!title && !summary) continue;
@@ -677,7 +855,7 @@
                             location: cols[3] ? cols[3].trim() : '',
                             details: summary || (cols[4] ? cols[4].trim() : ''),
                             notes: cols[4] ? cols[4].trim() : '',
-                            mapUrl: ''
+                            mapUrl: cols[6] ? cols[6].trim() : ''
                         });
                     }
 
@@ -702,7 +880,7 @@
                             lat = 36.2048; lon = 138.2529;
                         }
 
-                        setTripData(prev => ({
+                        setTripData(prev => ({ 
                             ...(prev || emptyTripData),
                             tripName: tripName,
                             startDate: startDate || "",
@@ -710,7 +888,7 @@
                             destination: destination,
                             lat: lat,
                             lon: lon,
-                            itinerary: [...(prev?.itinerary || []), ...newItems]
+                            itinerary: [...(prev?.itinerary || []), ...newItems] 
                         }));
                         alert(`นำเข้าสำเร็จ ${newItems.length} รายการ`);
                     } else alert('ไม่พบข้อมูล');
@@ -719,15 +897,15 @@
                 reader.readAsText(file);
             };
 
-            // Render Welcome Screen if no data
+            // 2. Welcome Screen if no data
             if (!tripData) {
                 return (
                     <div>
                         <input type="file" ref={csvInputRef} className="hidden" accept=".csv" onChange={handleCSVImport} />
-                        <WelcomeScreen
+                        <WelcomeScreen 
                             fileInputRef={csvInputRef}
-                            onImport={() => csvInputRef.current.click()}
-                            onCreate={() => setTripData(emptyTripData)}
+                            onImport={() => csvInputRef.current.click()} 
+                            onCreate={() => setTripData(emptyTripData)} 
                         />
                         <button onClick={toggleTheme} className="fixed top-4 right-4 bg-gray-200 dark:bg-gray-800 p-2 rounded-full shadow-md z-50">
                             <i className={`fa-solid ${isDarkMode ? 'fa-sun text-yellow-400' : 'fa-moon text-gray-600'}`}></i>
@@ -742,6 +920,7 @@
                     <div className="h-full bg-gray-50 dark:bg-gray-900 transition-colors">
                         {activeTab === 'home' && <ItineraryView tripData={tripData} setTripData={setTripData} isDarkMode={isDarkMode} toggleTheme={toggleTheme} />}
                         {activeTab === 'day' && <DayView tripData={tripData} setTripData={setTripData} />}
+                        {activeTab === 'tools' && <ToolsView tripData={tripData} setTripData={setTripData} />}
                         {activeTab === 'docs' && <DocumentsView tripData={tripData} setTripData={setTripData} />}
                         {activeTab === 'weather' && <WeatherView tripData={tripData} />}
                         {activeTab === 'settings' && <SettingsView tripData={tripData} setTripData={setTripData} onCSVImport={handleCSVImport} fileInputRef={csvInputRef} />}
@@ -755,5 +934,4 @@
         root.render(<App />);
     </script>
 </body>
-
 </html>
