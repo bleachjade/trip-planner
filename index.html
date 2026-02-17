@@ -350,6 +350,7 @@
                 if (file.size > 1024 * 1024 * 5) { alert("ไฟล์ใหญ่เกิน 5MB"); return; }
                 const reader = new FileReader();
                 reader.onloadend = () => {
+                    // Update state with uploaded base64
                     setTripData(prev => ({ ...prev, railMapImage: reader.result }));
                 };
                 reader.readAsDataURL(file);
@@ -358,6 +359,9 @@
             const isPdf = (url) => {
                 return url && (url.toLowerCase().endsWith('.pdf') || url.startsWith('data:application/pdf'));
             };
+
+            // Helper to check if current map is the default one
+            const isDefaultMap = tripData.railMapImage === emptyTripData.railMapImage;
 
             return (
                 <div className="p-4 pb-24 pt-6 space-y-8">
@@ -431,21 +435,27 @@
                                     <a href={tripData.railMapImage} target="_blank" className="w-full text-center bg-blue-600 text-white px-4 py-3 rounded-lg font-bold shadow-md hover:bg-blue-700 transition-colors">
                                         <i className="fa-solid fa-file-pdf mr-2"></i> ดูแผนที่เต็มจอ (Open PDF)
                                     </a>
-                                    <div className="flex justify-end">
-                                        <button onClick={() => setTripData(prev => ({...prev, railMapImage: null}))} className="text-xs text-red-500 hover:text-red-700 px-2 py-1">
-                                            <i className="fa-solid fa-trash mr-1"></i> ลบแผนที่
+                                    <div className="flex justify-between items-center pt-2">
+                                        <button onClick={() => mapInputRef.current.click()} className="text-xs text-purple-600 hover:text-purple-800 px-2 py-1">
+                                            <i className="fa-solid fa-upload mr-1"></i> เปลี่ยนรูป
                                         </button>
+                                        {!isDefaultMap && (
+                                            <button onClick={() => setTripData(prev => ({...prev, railMapImage: emptyTripData.railMapImage}))} className="text-xs text-red-500 hover:text-red-700 px-2 py-1">
+                                                <i className="fa-solid fa-rotate-left mr-1"></i> รีเซ็ตเป็นค่าเริ่มต้น
+                                            </button>
+                                        )}
                                     </div>
                                 </div>
                             </div>
                         ) : (
                             <div className="text-center py-8 border-2 border-dashed border-gray-200 dark:border-gray-600 rounded-lg">
                                 <i className="fa-solid fa-map-location-dot text-4xl text-gray-300 mb-2"></i>
-                                <p className="text-sm text-gray-500 mb-3">ยังไม่มีบันทึกรูปแผนที่</p>
-                                <button onClick={() => mapInputRef.current.click()} className="bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-300 px-4 py-2 rounded-lg text-sm font-bold hover:bg-purple-200 transition-colors">อัปโหลดรูปแผนที่</button>
-                                <input type="file" ref={mapInputRef} className="hidden" accept="image/*,.pdf" onChange={handleMapUpload} />
+                                <p className="text-sm text-gray-500 mb-3">ไม่พบแผนที่</p>
+                                <button onClick={() => setTripData(prev => ({...prev, railMapImage: emptyTripData.railMapImage}))} className="bg-gray-100 text-gray-600 px-3 py-1 rounded-lg text-xs font-bold hover:bg-gray-200 mr-2">ใช้แผนที่เดิม</button>
+                                <button onClick={() => mapInputRef.current.click()} className="bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-300 px-4 py-2 rounded-lg text-sm font-bold hover:bg-purple-200 transition-colors">อัปโหลดรูป</button>
                             </div>
                         )}
+                        <input type="file" ref={mapInputRef} className="hidden" accept="image/*,.pdf" onChange={handleMapUpload} />
                     </div>
                 </div>
             );
