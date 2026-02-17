@@ -5,37 +5,33 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 
-    <!-- SEO & Social Sharing -->
     <title>TripMate - แผนการเดินทางของคุณ</title>
     <meta name="description" content="วางแผนการเดินทาง เช็คเที่ยวบิน และดูพยากรณ์อากาศในที่เดียว ใช้งานแบบออฟไลน์ได้">
     <meta name="theme-color" content="#2563eb">
 
-    <!-- iOS Home Screen Configuration -->
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="TripMate">
-    <!-- Icon for iOS Home Screen -->
     <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/2200/2200326.png">
 
-    <!-- Open Graph -->
     <meta property="og:type" content="website">
     <meta property="og:title" content="TripMate - Travel Planner">
     <meta property="og:description" content="ดูแผนการเดินทางของฉัน พร้อมรายละเอียดที่พักและจุดท่องเที่ยว">
     <meta property="og:image"
         content="https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?ixlib=rb-4.0.3&auto=format&fit=crop&w=1200&q=80">
 
-    <!-- Favicon -->
     <link rel="icon"
         href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>✈️</text></svg>">
 
-    <!-- React & ReactDOM -->
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 
-    <!-- Babel -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/Draggable.min.js"></script>
+
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
@@ -65,9 +61,7 @@
         }
     </script>
 
-    <!-- FontAwesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600&display=swap" rel="stylesheet">
 
     <style>
@@ -91,21 +85,101 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect, useRef } = React;
+        const { useState, useEffect, useRef, useLayoutEffect } = React;
+
+        // --- IndexedDB Helpers ---
+        const DB_NAME = "TripMateStorage";
+        const STORE_NAME = "tripData";
+        const DB_VERSION = 1;
+
+        const initDB = () => {
+            return new Promise((resolve, reject) => {
+                const request = indexedDB.open(DB_NAME, DB_VERSION);
+                request.onupgradeneeded = (e) => {
+                    const db = e.target.result;
+                    if (!db.objectStoreNames.contains(STORE_NAME)) {
+                        db.createObjectStore(STORE_NAME);
+                    }
+                };
+                request.onsuccess = () => resolve(request.result);
+                request.onerror = () => reject(request.error);
+            });
+        };
+
+        const saveToIDB = async (key, data) => {
+            try {
+                const db = await initDB();
+                const tx = db.transaction(STORE_NAME, "readwrite");
+                tx.objectStore(STORE_NAME).put(data, key);
+                return tx.complete;
+            } catch (err) {
+                console.error("Failed to save to IndexedDB", err);
+            }
+        };
+
+        const getFromIDB = async (key) => {
+            try {
+                const db = await initDB();
+                return new Promise((resolve) => {
+                    const tx = db.transaction(STORE_NAME, "readonly");
+                    const request = tx.objectStore(STORE_NAME).get(key);
+                    request.onsuccess = () => resolve(request.result);
+                    request.onerror = () => resolve(null);
+                });
+            } catch (err) {
+                console.error("Failed to get from IndexedDB", err);
+                return null;
+            }
+        };
+
+        const removeFromIDB = async (key) => {
+            const db = await initDB();
+            const tx = db.transaction(STORE_NAME, "readwrite");
+            tx.objectStore(STORE_NAME).delete(key);
+        };
 
         // --- Helpers ---
         const generateId = () => Math.random().toString(36).substr(2, 9);
 
+        // --- Data Definitions ---
+        const defaultPhrases = [
+            { cat: 'ทั่วไป', t: 'สวัสดี', j: 'Konnichiwa', p: 'คอน-นิ-ชิ-วะ' },
+            { cat: 'ทั่วไป', t: 'ขอบคุณ', j: 'Arigatou Gozaimasu', p: 'อา-ริ-กา-โตะ โก-ไซ-มัส' },
+            { cat: 'ทั่วไป', t: 'ขอโทษ/รบกวนหน่อย', j: 'Sumimasen', p: 'สุ-มิ-มา-เซ็น' },
+            { cat: 'ทั่วไป', t: 'ใช่ / ไม่ใช่', j: 'Hai / Iie', p: 'ไฮ่ / อิ-เอะ' },
+            { cat: 'ช้อปปิ้ง', t: 'อันนี้เท่าไหร่?', j: 'Kore wa ikura desu ka?', p: 'โค-เระ วะ อิ-คุ-ระ เดส-ก๊ะ?' },
+            { cat: 'ช้อปปิ้ง', t: 'แพงไปหน่อย', j: 'Chotto takai desu', p: 'ชต-โตะ ตา-ไค เดส' },
+            { cat: 'ช้อปปิ้ง', t: 'ลดได้ไหม?', j: 'Makete kudasai', p: 'มา-เกะ-เตะ คุ-ดา-ไซ' },
+            { cat: 'เดินทาง/ทั่วไป', t: 'ห้องน้ำอยู่ไหน?', j: 'Toire wa doko desu ka?', p: 'โท-อิ-เระ วะ โด-โกะ เดส-ก๊ะ?' },
+            { cat: 'อาหาร', t: 'ขอน้ำเปล่า', j: 'Mizu o kudasai', p: 'มิ-สุ โอะ คุ-ดา-ไซ' },
+            { cat: 'อาหาร', t: 'เช็คบิล', j: 'Okaikei onegaishimasu', p: 'โอ-ไค-เค โอ-เน-ไก-ชิ-มัส' },
+            { cat: 'เดินทาง', t: 'สถานีรถไฟ', j: 'Eki', p: 'เอะ-กิ' },
+            { cat: 'ตัวเลข', t: '1 (หนึ่ง)', j: 'Ichi', p: 'อิ-จิ' },
+            { cat: 'ตัวเลข', t: '2 (สอง)', j: 'Ni', p: 'นิ' },
+            { cat: 'ตัวเลข', t: '3 (สาม)', j: 'San', p: 'ซัน' },
+            { cat: 'ตัวเลข', t: '4 (สี่)', j: 'Yon / Shi', p: 'ยง / ชิ' },
+            { cat: 'ตัวเลข', t: '5 (ห้า)', j: 'Go', p: 'โกะ' },
+            { cat: 'ตัวเลข', t: '6 (หก)', j: 'Roku', p: 'โระ-คุ' },
+            { cat: 'ตัวเลข', t: '7 (เจ็ด)', j: 'Nana / Shichi', p: 'นา-นะ / ชิ-จิ' },
+            { cat: 'ตัวเลข', t: '8 (แปด)', j: 'Hachi', p: 'ฮา-จิ' },
+            { cat: 'ตัวเลข', t: '9 (เก้า)', j: 'Kyu', p: 'คิว' },
+            { cat: 'ตัวเลข', t: '10 (สิบ)', j: 'Ju', p: 'จู' },
+            { cat: 'ตัวเลข', t: '100 (ร้อย)', j: 'Hyaku', p: 'เฮียะ-คุ' },
+            { cat: 'ตัวเลข', t: '1,000 (พัน)', j: 'Sen', p: 'เซ็น' },
+            { cat: 'ตัวเลข', t: '10,000 (หมื่น)', j: 'Man', p: 'มัง' },
+        ].map(p => ({ ...p, id: generateId() }));
+
         // --- DATA_MARKER_START ---
         const emptyTripData = {
             tripName: "",
-            destination: "",
-            lat: 13.7563,
-            lon: 100.5018,
+            destination: "Japan",
+            lat: 35.6762,
+            lon: 139.6503,
             startDate: "",
             endDate: "",
             itinerary: [],
             documents: [],
+            phrases: defaultPhrases,
             railMapImage: "./assets/202305_number_en.pdf"
         };
         // --- DATA_MARKER_END ---
@@ -135,8 +209,8 @@
 
         const inferType = (text) => {
             const lower = text.toLowerCase();
-            if (lower.includes('flight') || lower.includes('airport') || lower.includes('arrival') || lower.includes('skyliner') || lower.includes('train')) return 'flight';
-            if (lower.includes('hotel') || lower.includes('check-in') || lower.includes('luggage')) return 'hotel';
+            if (lower.includes('flight') || lower.includes('airport') || lower.includes('arrival') || lower.includes('departure') || lower.includes('skyliner') || lower.includes('train')) return 'flight';
+            if (lower.includes('hotel') || lower.includes('check-in') || lower.includes('luggage') || lower.includes('stay')) return 'hotel';
             if (lower.includes('lunch') || lower.includes('dinner') || lower.includes('food') || lower.includes('eat') || lower.includes('curry') || lower.includes('sushi') || lower.includes('ramen')) return 'food';
             return 'sightseeing';
         };
@@ -193,35 +267,91 @@
 
         // 0. Welcome Screen
         const WelcomeScreen = ({ onImport, onCreate, fileInputRef }) => {
+            const containerRef = useRef(null);
+            const iconRef = useRef(null);
+            const contentRef = useRef(null);
+
+            useLayoutEffect(() => {
+                let ctx = gsap.context(() => {
+                    gsap.from(".animate-item", {
+                        y: 30,
+                        opacity: 0,
+                        duration: 0.8,
+                        stagger: 0.2,
+                        ease: "power3.out"
+                    });
+
+                    gsap.to(iconRef.current, {
+                        y: -15,
+                        duration: 2,
+                        repeat: -1,
+                        yoyo: true,
+                        ease: "sine.inOut"
+                    });
+
+                    gsap.to(".bg-glow", {
+                        scale: 1.2,
+                        opacity: 0.6,
+                        duration: 4,
+                        repeat: -1,
+                        yoyo: true,
+                        ease: "sine.inOut"
+                    });
+                }, containerRef);
+
+                return () => ctx.revert();
+            }, []);
+
             return (
-                <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-gray-50 dark:bg-gray-900 text-center animate-fade-in">
-                    <div className="w-24 h-24 bg-blue-100 dark:bg-blue-900 rounded-full flex items-center justify-center mb-6 shadow-lg">
-                        <i className="fa-solid fa-plane-up text-4xl text-blue-600 dark:text-blue-300"></i>
-                    </div>
-                    <h1 className="text-3xl font-bold text-gray-800 dark:text-white mb-2">TripMate</h1>
-                    <p className="text-gray-500 dark:text-gray-400 mb-8 max-w-xs">วางแผนการเดินทางของคุณได้ง่ายๆ รองรับการนำเข้าไฟล์ CSV</p>
+                <div
+                    ref={containerRef}
+                    className="relative min-h-screen flex flex-col items-center justify-center p-6 bg-gray-50 dark:bg-gray-900 text-center overflow-hidden"
+                >
+                    <div className="bg-glow absolute top-1/4 left-1/2 -translate-x-1/2 w-64 h-64 bg-blue-400/20 dark:bg-blue-600/10 blur-[100px] rounded-full pointer-events-none" />
 
-                    <div className="space-y-4 w-full max-w-xs">
-                        <button
-                            onClick={() => fileInputRef.current.click()}
-                            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl shadow-lg transition-transform active:scale-95 flex items-center justify-center space-x-2"
+                    <div ref={contentRef} className="relative z-10">
+                        <div
+                            ref={iconRef}
+                            className="animate-item w-28 h-28 bg-gradient-to-tr from-blue-500 to-blue-400 dark:from-blue-600 dark:to-indigo-500 rounded-3xl flex items-center justify-center mb-8 shadow-2xl rotate-3 mx-auto"
                         >
-                            <i className="fa-solid fa-file-csv text-xl"></i>
-                            <span>นำเข้าไฟล์ CSV</span>
-                        </button>
-
-                        <div className="relative flex py-2 items-center">
-                            <div className="flex-grow border-t border-gray-300 dark:border-gray-700"></div>
-                            <span className="flex-shrink-0 mx-4 text-gray-400 text-sm">หรือ</span>
-                            <div className="flex-grow border-t border-gray-300 dark:border-gray-700"></div>
+                            <i className="fa-solid fa-plane-up text-5xl text-white"></i>
                         </div>
 
-                        <button
-                            onClick={onCreate}
-                            className="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 font-bold py-4 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-                        >
-                            เริ่มทริปใหม่ (ว่างเปล่า)
-                        </button>
+                        <h1 className="animate-item text-5xl font-extrabold tracking-tight text-gray-900 dark:text-white mb-3">
+                            Trip<span className="text-blue-600 dark:text-blue-400">Mate</span>
+                        </h1>
+                        <p className="animate-item text-gray-500 dark:text-gray-400 mb-10 max-w-sm text-lg leading-relaxed">
+                            วางแผนการเดินทางของคุณให้เป็นเรื่องสนุก <br />
+                            <span className="text-sm opacity-75">เริ่มต้นง่ายๆ เพียงนำเข้าไฟล์ CSV</span>
+                        </p>
+
+                        <div className="animate-item space-y-4 w-full max-w-xs mx-auto">
+                            <button
+                                onClick={() => fileInputRef.current.click()}
+                                className="group w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-2xl shadow-lg shadow-blue-500/30 transition-all duration-300 hover:-translate-y-1 active:scale-95 flex items-center justify-center space-x-3"
+                            >
+                                <i className="fa-solid fa-file-csv text-xl group-hover:rotate-12 transition-transform"></i>
+                                <span>นำเข้าไฟล์ CSV</span>
+                            </button>
+
+                            <div className="relative flex py-3 items-center">
+                                <div className="flex-grow border-t border-gray-200 dark:border-gray-800"></div>
+                                <span className="flex-shrink-0 mx-4 text-gray-400 text-xs font-medium uppercase tracking-widest">หรือ</span>
+                                <div className="flex-grow border-t border-gray-200 dark:border-gray-800"></div>
+                            </div>
+
+                            <button
+                                onClick={onCreate}
+                                className="w-full bg-white dark:bg-gray-800 border-2 border-gray-100 dark:border-gray-700 text-gray-700 dark:text-gray-300 font-bold py-4 rounded-2xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-all duration-300 hover:border-blue-200 dark:hover:border-blue-900"
+                            >
+                                สร้างทริปใหม่ด้วยตัวเอง
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="animate-item absolute bottom-8 text-gray-400 dark:text-gray-600 text-sm">
+                        <i className="fa-solid fa-earth-americas mr-2"></i>
+                        พร้อมสำหรับการผจญภัยหรือยัง?
                     </div>
                 </div>
             );
@@ -321,6 +451,7 @@
                 </div>
             );
         };
+
         // 3. Countdown Helper Component
         const TripCountdown = ({ startDate, endDate }) => {
             const [timeLeft, setTimeLeft] = useState(null);
@@ -337,22 +468,19 @@
                     const diffEnd = end - now;
 
                     if (diffStart > 0) {
-                        // Trip hasn't started
                         const days = Math.floor(diffStart / (1000 * 60 * 60 * 24));
                         const hours = Math.floor((diffStart % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
                         const mins = Math.floor((diffStart % (1000 * 60 * 60)) / (1000 * 60));
                         setTimeLeft({ status: 'waiting', days, hours, mins });
                     } else if (diffEnd > 0) {
-                        // Trip is in progress
                         setTimeLeft({ status: 'active' });
                     } else {
-                        // Trip finished
                         setTimeLeft({ status: 'finished' });
                     }
                 };
 
                 calculateTime();
-                const timer = setInterval(calculateTime, 60000); // Update every minute
+                const timer = setInterval(calculateTime, 60000);
                 return () => clearInterval(timer);
             }, [startDate, endDate]);
 
@@ -384,14 +512,132 @@
             );
         };
 
+        // 3.1 Live Flight Activity Component
+        const FlightLiveActivity = ({ itinerary }) => {
+            const [activeFlight, setActiveFlight] = useState(null);
+
+            useEffect(() => {
+                const checkFlights = () => {
+                    const today = new Date().toISOString().split('T')[0];
+                    const flightsToday = itinerary.filter(item => item.type === 'flight' && item.date === today);
+
+                    if (flightsToday.length > 0) {
+                        const now = new Date();
+                        const sorted = flightsToday.sort((a, b) => {
+                            const timeA = new Date(`${today}T${(a.time || '00:00').split('-')[0]}`);
+                            const timeB = new Date(`${today}T${(b.time || '00:00').split('-')[0]}`);
+                            return Math.abs(timeA - now) - Math.abs(timeB - now);
+                        });
+                        setActiveFlight(sorted[0]);
+                    } else {
+                        setActiveFlight(null);
+                    }
+                };
+
+                checkFlights();
+                const timer = setInterval(checkFlights, 60000);
+                return () => clearInterval(timer);
+            }, [itinerary]);
+
+            if (!activeFlight) return null;
+
+            const startTime = (activeFlight.time || '00:00').split('-')[0];
+            const flightTime = new Date(`${activeFlight.date}T${startTime}`);
+            const diffMinutes = (flightTime - new Date()) / (1000 * 60);
+
+            let statusText = "";
+            let icon = "fa-plane";
+
+            if (diffMinutes > 180) {
+                statusText = `เที่ยวบินจะออกเวลา ${startTime} (เตรียมเช็คอิน)`;
+            } else if (diffMinutes > 0) {
+                statusText = `เที่ยวบินกำลังจะออกในอีก ${Math.floor(diffMinutes)} นาที`;
+                icon = "fa-plane-departure";
+            } else if (diffMinutes > -360) {
+                statusText = `กำลังเดินทาง... (ออกเดินทางเมื่อ ${startTime})`;
+                icon = "fa-plane-up";
+            } else {
+                statusText = `เที่ยวบินน่าจะเดินทางถึงที่หมายแล้ว`;
+                icon = "fa-plane-arrival";
+            }
+
+            return (
+                <div className="mt-3 px-4 py-3 bg-blue-500/20 backdrop-blur-md rounded-xl border border-white/30 flex items-center justify-between animate-fade-in">
+                    <div className="flex items-center space-x-3">
+                        <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center">
+                            <i className={`fa-solid ${icon} text-white text-lg`}></i>
+                        </div>
+                        <div>
+                            <p className="text-[10px] font-bold uppercase tracking-wider opacity-70">Live Flight Status</p>
+                            <p className="text-sm font-bold text-white leading-tight truncate w-36">{activeFlight.title}</p>
+                            <p className="text-[11px] text-white/90">{statusText}</p>
+                        </div>
+                    </div>
+                    <a
+                        href={`https://www.google.com/search?q=flight+status+${encodeURIComponent(activeFlight.title)}`}
+                        target="_blank"
+                        className="bg-white text-blue-600 px-3 py-1.5 rounded-lg text-xs font-bold shadow-sm whitespace-nowrap active:scale-95 transition-transform"
+                    >
+                        Check Live
+                    </a>
+                </div>
+            );
+        };
+
         // 4. Tools View
         const ToolsView = ({ tripData, setTripData }) => {
+            const mapInputRef = useRef(null);
+            const [isJpyToThb, setIsJpyToThb] = useState(true);
             const [amount, setAmount] = useState(1000);
             const [rate, setRate] = useState(0.23);
-            const [isJpyToThb, setIsJpyToThb] = useState(true);
-            const mapInputRef = useRef(null);
+            const [filter, setFilter] = useState('ทั้งหมด');
+            const [isAdding, setIsAdding] = useState(false);
+            const [isTranslating, setIsTranslating] = useState(false);
+            const [newPhrase, setNewPhrase] = useState({ t: '', j: '', p: '', cat: 'ทั่วไป' });
 
-            // Auto-fetch rate on mount
+            const categories = ['ทั้งหมด', ...new Set(tripData.phrases.map(p => p.cat))];
+            const filteredPhrases = filter === 'ทั้งหมด' ? tripData.phrases : tripData.phrases.filter(p => p.cat === filter);
+
+            const handleAutoTranslate = async () => {
+                if (!newPhrase.t.trim()) return;
+                setIsTranslating(true);
+                try {
+                    // ใช้ Google Translate API (Internal Client) ซึ่งส่งคำอ่าน (Romaji) กลับมาด้วย
+                    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=th&tl=ja&dt=t&dt=rm&q=${encodeURIComponent(newPhrase.t)}`;
+                    const res = await fetch(url);
+                    const data = await res.json();
+                    console.log(data)
+
+                    // data[0][0][0] = คำแปลภาษาญี่ปุ่น
+                    // data[0][1][3] = คำอ่าน (Romaji)
+                    const translatedText = data[0][0][0];
+                    const transliteration = data[0][1] ? data[0][1][2] : "---";
+
+                    setNewPhrase(prev => ({ 
+                        ...prev, 
+                        j: translatedText,
+                        p: transliteration
+                    }));
+                } catch (e) {
+                    alert("การแปลขัดข้อง กรุณาลองใหม่");
+                    console.error(e);
+                } finally { setIsTranslating(false); }
+            };
+
+            const handleAdd = () => {
+                if (!newPhrase.t || !newPhrase.j) return;
+                setTripData(prev => ({
+                    ...prev,
+                    phrases: [...prev.phrases, { ...newPhrase, id: generateId() }]
+                }));
+                setNewPhrase({ t: '', j: '', p: '', cat: 'ทั่วไป' });
+                setIsAdding(false);
+            };
+
+            const handleDelete = (id) => {
+                setTripData(prev => ({ ...prev, phrases: prev.phrases.filter(p => p.id !== id) }));
+            };
+
             useEffect(() => {
                 fetchRate();
             }, []);
@@ -406,41 +652,11 @@
                 } catch (e) { console.error('Rate fetch failed', e); }
             };
 
-            const phrases = [
-                { t: 'สวัสดี', j: 'Konnichiwa', p: 'คอน-นิ-ชิ-วะ' },
-                { t: 'ขอบคุณ', j: 'Arigatou Gozaimasu', p: 'อา-ริ-กา-โตะ โก-ไซ-มัส' },
-                { t: 'ขอโทษ/รบกวนหน่อย', j: 'Sumimasen', p: 'สุ-มิ-มา-เซ็น' },
-                { t: 'ใช่ / ไม่ใช่', j: 'Hai / Iie', p: 'ไฮ่ / อิ-เอะ' },
-                { t: 'อันนี้เท่าไหร่?', j: 'Kore wa ikura desu ka?', p: 'โค-เระ วะ อิ-คุ-ระ เดส-ก๊ะ?' },
-                { t: 'แพงไปหน่อย', j: 'Chotto takai desu', p: 'ชต-โตะ ตา-ไค เดส' },
-                { t: 'ลดได้ไหม?', j: 'Makete kudasai', p: 'มา-เกะ-เตะ คุ-ดา-ไซ' },
-                { t: 'ห้องน้ำอยู่ไหน?', j: 'Toire wa doko desu ka?', p: 'โท-อิ-เระ วะ โด-โกะ เดส-ก๊ะ?' },
-                { t: 'ขอน้ำเปล่า', j: 'Mizu o kudasai', p: 'มิ-สุ โอะ คุ-ดา-ไซ' },
-                { t: 'เช็คบิล', j: 'Okaikei onegaishimasu', p: 'โอ-ไค-เค โอ-เน-ไก-ชิ-มัส' },
-                { t: 'สถานีรถไฟ', j: 'Eki', p: 'เอะ-กิ' },
-                { t: '----------', j: 'Numbers', p: 'ตัวเลข' },
-                { t: '1 (หนึ่ง)', j: 'Ichi', p: 'อิ-จิ' },
-                { t: '2 (สอง)', j: 'Ni', p: 'นิ' },
-                { t: '3 (สาม)', j: 'San', p: 'ซัน' },
-                { t: '4 (สี่)', j: 'Yon / Shi', p: 'ยง / ชิ' },
-                { t: '5 (ห้า)', j: 'Go', p: 'โกะ' },
-                { t: '6 (หก)', j: 'Roku', p: 'โระ-คุ' },
-                { t: '7 (เจ็ด)', j: 'Nana / Shichi', p: 'นา-นะ / ชิ-จิ' },
-                { t: '8 (แปด)', j: 'Hachi', p: 'ฮา-จิ' },
-                { t: '9 (เก้า)', j: 'Kyu', p: 'คิว' },
-                { t: '10 (สิบ)', j: 'Ju', p: 'จู' },
-                { t: '100 (ร้อย)', j: 'Hyaku', p: 'เฮียะ-คุ' },
-                { t: '1,000 (พัน)', j: 'Sen', p: 'เซ็น' },
-                { t: '10,000 (หมื่น)', j: 'Man', p: 'มัง' },
-            ];
-
             const handleMapUpload = (e) => {
                 const file = e.target.files[0];
                 if (!file) return;
-                if (file.size > 1024 * 1024 * 5) { alert("ไฟล์ใหญ่เกิน 5MB"); return; }
                 const reader = new FileReader();
                 reader.onloadend = () => {
-                    // Update state with uploaded base64
                     setTripData(prev => ({ ...prev, railMapImage: reader.result }));
                 };
                 reader.readAsDataURL(file);
@@ -450,14 +666,12 @@
                 return url && (url.toLowerCase().endsWith('.pdf') || url.startsWith('data:application/pdf'));
             };
 
-            // Helper to check if current map is the default one
             const isDefaultMap = tripData.railMapImage === emptyTripData.railMapImage;
 
             return (
                 <div className="p-4 pb-24 pt-6 space-y-8">
                     <h2 className="text-2xl font-bold text-gray-800 dark:text-white">เครื่องมือช่วยเที่ยว</h2>
 
-                    {/* Currency */}
                     <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-5 border border-gray-100 dark:border-gray-700">
                         <div className="flex justify-between items-center mb-4">
                             <h3 className="font-bold text-lg text-gray-800 dark:text-white flex items-center">
@@ -486,27 +700,59 @@
                         </div>
                     </div>
 
-                    {/* Phrasebook */}
-                    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-5 border border-gray-100 dark:border-gray-700">
-                        <h3 className="font-bold text-lg mb-4 text-gray-800 dark:text-white flex items-center">
-                            <i className="fa-solid fa-comments text-green-500 mr-2"></i> ภาษาญี่ปุ่นฉุกเฉิน
-                        </h3>
-                        <div className="space-y-3">
-                            {phrases.map((p, idx) => (
-                                <div key={idx} className="flex justify-between items-center border-b dark:border-gray-700 pb-2 last:border-0 last:pb-0">
-                                    <div>
-                                        <p className="font-bold text-gray-800 dark:text-white text-sm">{p.t}</p>
-                                        <p className="text-xs text-gray-400">{p.p}</p>
+                    <div className="bg-white dark:bg-gray-800 p-5 rounded-2xl shadow-sm border dark:border-gray-700">
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="font-bold"><i className="fa-solid fa-language text-green-500 mr-2"></i>ภาษาญี่ปุ่น</h3>
+                            <button onClick={() => setIsAdding(!isAdding)} className="text-xs bg-blue-600 text-white px-3 py-1.5 rounded-full">+ เพิ่มคำใหม่</button>
+                        </div>
+
+                        {isAdding && (
+                            <div className="mb-6 p-4 bg-blue-50 dark:bg-gray-700 rounded-xl space-y-3 border border-blue-100 dark:border-gray-600">
+                                <p className="text-[10px] text-blue-500 font-bold uppercase">Auto-Translate Mode</p>
+                                <div>
+                                    <label className="text-xs text-gray-400">คำไทย (พิมพ์เสร็จแล้วกด 'แปล')</label>
+                                    <div className="flex space-x-2 mt-1">
+                                        <input className="flex-1 p-2 rounded border dark:bg-gray-800 dark:border-gray-600 text-sm" value={newPhrase.t} onChange={e => setNewPhrase({...newPhrase, t: e.target.value})} placeholder="เช่น สั่งอาหาร..." />
+                                        <button 
+                                            onClick={handleAutoTranslate} 
+                                            disabled={isTranslating}
+                                            className="bg-blue-600 text-white px-3 rounded-lg text-xs disabled:opacity-50"
+                                        >
+                                            {isTranslating ? <i className="fa-solid fa-spinner fa-spin"></i> : "แปล"}
+                                        </button>
+                                    </div>
+                                </div>
+                                <input placeholder="ภาษาญี่ปุ่น (Auto-filled)" className="w-full p-2 rounded border text-sm dark:bg-gray-800 dark:border-gray-600" value={newPhrase.j} onChange={e => setNewPhrase({...newPhrase, j: e.target.value})} />
+                                <input placeholder="คำอ่าน (Auto-filled)" className="w-full p-2 rounded border text-sm dark:bg-gray-800 dark:border-gray-600" value={newPhrase.p} onChange={e => setNewPhrase({...newPhrase, p: e.target.value})} />
+                                <select className="w-full p-2 text-sm dark:bg-gray-800 rounded border dark:border-gray-600" value={newPhrase.cat} onChange={e => setNewPhrase({...newPhrase, cat: e.target.value})}>
+                                    {categories.filter(c => c !== 'ทั้งหมด').map(c => <option key={c} value={c}>{c}</option>)}
+                                </select>
+                                <button onClick={handleAdd} className="w-full bg-blue-600 text-white py-2.5 rounded-lg text-sm font-bold shadow-md">บันทึกคำศัพท์</button>
+                            </div>
+                        )}
+
+                        <div className="flex overflow-x-auto no-scrollbar space-x-2 mb-4">
+                            {categories.map(cat => (
+                                <button key={cat} onClick={() => setFilter(cat)} className={`px-4 py-1.5 rounded-full text-xs font-bold flex-shrink-0 ${filter === cat ? 'bg-blue-600 text-white shadow-md' : 'bg-gray-100 dark:bg-gray-700 text-gray-500'}`}>{cat}</button>
+                            ))}
+                        </div>
+
+                        <div className="divide-y dark:divide-gray-700">
+                            {(filter === 'ทั้งหมด' ? tripData.phrases : tripData.phrases.filter(p => p.cat === filter)).map(p => (
+                                <div key={p.id} className="py-3 flex justify-between items-center group">
+                                    <div className="flex-1">
+                                        <p className="font-bold text-sm dark:text-white">{p.t}</p>
+                                        <p className="text-[11px] text-gray-400">{p.p}</p>
                                     </div>
                                     <div className="text-right">
-                                        <p className="text-blue-600 dark:text-blue-400 font-medium text-sm">{p.j}</p>
+                                        <p className="text-blue-600 dark:text-blue-400 font-bold text-sm">{p.j}</p>
+                                        <button onClick={() => setTripData(prev => ({...prev, phrases: prev.phrases.filter(i => i.id !== p.id)}))} className="text-[10px] text-red-300 opacity-0 group-hover:opacity-100 transition-opacity">ลบ</button>
                                     </div>
                                 </div>
                             ))}
                         </div>
                     </div>
 
-                    {/* Train Map */}
                     <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-5 border border-gray-100 dark:border-gray-700">
                         <h3 className="font-bold text-lg mb-4 text-gray-800 dark:text-white flex items-center">
                             <i className="fa-solid fa-map text-purple-500 mr-2"></i> แผนที่รถไฟ
@@ -614,8 +860,43 @@
         const ItineraryView = ({ tripData, setTripData, isDarkMode, toggleTheme }) => {
             const [modalOpen, setModalOpen] = useState(false);
             const [editingItem, setEditingItem] = useState(null);
+            const cardRef = useRef(null);
+            const planeRef = useRef(null);
 
-            const groupedItinerary = tripData.itinerary.sort((a, b) => new Date(`${a.date}T${a.time}`) - new Date(`${b.date}T${b.time}`)).reduce((groups, item) => {
+            useLayoutEffect(() => {
+                let ctx = gsap.context(() => {
+                    gsap.from(cardRef.current, {
+                        y: -20,
+                        opacity: 0,
+                        duration: 0.8,
+                        ease: "power3.out"
+                    });
+
+                    gsap.to(planeRef.current, {
+                        x: 15,
+                        y: -15,
+                        duration: 4,
+                        repeat: -1,
+                        yoyo: true,
+                        ease: "sine.inOut"
+                    });
+
+                    gsap.from(".header-content", {
+                        x: -15,
+                        opacity: 0,
+                        duration: 0.6,
+                        stagger: 0.1,
+                        ease: "power2.out",
+                        delay: 0.2
+                    });
+                }, cardRef);
+
+                return () => ctx.revert();
+            }, []);
+
+            const sortedItinerary = [...tripData.itinerary].sort((a, b) => new Date(`${a.date}T${(a.time || '00:00').split('-')[0]}`) - new Date(`${b.date}T${(b.time || '00:00').split('-')[0]}`));
+
+            const groupedItinerary = sortedItinerary.reduce((groups, item) => {
                 if (!groups[item.date]) groups[item.date] = [];
                 groups[item.date].push(item);
                 return groups;
@@ -630,20 +911,47 @@
 
             return (
                 <div className="pb-24 pt-4 px-4">
-                    <div className="bg-gradient-to-r from-blue-600 to-indigo-600 dark:from-blue-800 dark:to-indigo-800 rounded-2xl p-6 text-white shadow-xl mb-6 relative overflow-hidden">
+                    <div
+                        ref={cardRef}
+                        style={{ perspective: "1000px" }}
+                        className="bg-gradient-to-r from-blue-600 to-indigo-600 dark:from-blue-800 dark:to-indigo-800 rounded-2xl p-6 text-white shadow-xl mb-6 relative overflow-hidden transition-all duration-300"
+                    >
                         <div className="absolute top-4 right-4 z-20">
-                            <button onClick={toggleTheme} className="bg-white/20 hover:bg-white/30 p-2 rounded-full w-10 h-10 backdrop-blur-sm transition-colors">
-                                <i className={`fa-solid ${isDarkMode ? 'fa-sun' : 'fa-moon'}`}></i>
+                            <button
+                                onClick={toggleTheme}
+                                className="bg-white/20 hover:bg-white/40 p-2 rounded-full w-10 h-10 backdrop-blur-md transition-all active:scale-90 flex items-center justify-center border border-white/10"
+                            >
+                                <i className={`fa-solid ${isDarkMode ? 'fa-sun text-yellow-300' : 'fa-moon'} transition-transform duration-500 ${isDarkMode ? 'rotate-[360deg]' : ''}`}></i>
                             </button>
                         </div>
-                        <div className="absolute top-0 right-0 opacity-10 transform translate-x-4 -translate-y-4"><i className="fa-solid fa-plane text-9xl"></i></div>
-                        <h1 className="text-2xl font-bold">{tripData.tripName || "Trip Name"}</h1>
-                        <p className="opacity-90 flex items-center mt-2"><i className="fa-solid fa-location-dot mr-2"></i> {tripData.destination || "Destination"}</p>
-                        <div className="mt-4 inline-block bg-white/20 px-3 py-1 rounded-lg text-sm backdrop-blur-sm">{tripData.startDate} - {tripData.endDate}</div>
 
-                        {/* Countdown added here */}
-                        <div className="block">
-                            <TripCountdown startDate={tripData.startDate} endDate={tripData.endDate} />
+                        <div
+                            ref={planeRef}
+                            className="absolute top-0 right-0 opacity-10 pointer-events-none"
+                            style={{ transform: 'translate(10%, -10%)' }}
+                        >
+                            <i className="fa-solid fa-plane text-[10rem] -rotate-12"></i>
+                        </div>
+
+                        <div className="relative z-10">
+                            <h1 className="header-content text-3xl font-bold tracking-tight mb-1">
+                                {tripData.tripName || "Trip Name"}
+                            </h1>
+
+                            <p className="header-content opacity-90 flex items-center text-lg">
+                                <i className="fa-solid fa-location-dot mr-2 text-blue-200"></i>
+                                {tripData.destination || "Destination"}
+                            </p>
+
+                            <div className="header-content mt-4 inline-flex items-center space-x-2 bg-black/10 px-4 py-1.5 rounded-full text-sm font-medium backdrop-blur-sm border border-white/5">
+                                <i className="fa-regular fa-calendar text-xs"></i>
+                                <span>{tripData.startDate} - {tripData.endDate}</span>
+                            </div>
+
+                            <div className="header-content mt-6 space-y-3">
+                                <TripCountdown startDate={tripData.startDate} endDate={tripData.endDate} />
+                                <FlightLiveActivity itinerary={tripData.itinerary} />
+                            </div>
                         </div>
                     </div>
 
@@ -670,14 +978,14 @@
             );
         };
 
-        // 6. Day View
+        // 7. Day View
         const DayView = ({ tripData, setTripData }) => {
             const [selectedDate, setSelectedDate] = useState(tripData.startDate);
             const [modalOpen, setModalOpen] = useState(false);
             const [editingItem, setEditingItem] = useState(null);
 
             const dates = Array.from(new Set([...tripData.itinerary.map(i => i.date), tripData.startDate, tripData.endDate].filter(d => d))).sort();
-            const items = tripData.itinerary.filter(i => i.date === selectedDate).sort((a, b) => a.time.localeCompare(b.time));
+            const items = tripData.itinerary.filter(i => i.date === selectedDate).sort((a, b) => (a.time || '').split('-')[0].localeCompare((b.time || '').split('-')[0]));
 
             const handleSave = (item) => {
                 if (editingItem) setTripData(prev => ({ ...prev, itinerary: prev.itinerary.map(i => i.id === item.id ? item : i) }));
@@ -709,146 +1017,286 @@
             );
         };
 
-        // 7. Documents View
+        // 8. Documents View
         const DocumentsView = ({ tripData, setTripData }) => {
+            const [selectedDoc, setSelectedDoc] = useState(null);
             const fileInputRef = useRef(null);
+            const modalRef = useRef(null);
+            const modalImgRef = useRef(null);
+
+            useLayoutEffect(() => {
+                if (selectedDoc) {
+                    const ctx = gsap.context(() => {
+                        gsap.fromTo(modalRef.current,
+                            { opacity: 0 },
+                            { opacity: 1, duration: 0.3, ease: "power2.out" }
+                        );
+                        gsap.fromTo(modalImgRef.current,
+                            { scale: 0.8, y: 20, opacity: 0 },
+                            { scale: 1, y: 0, opacity: 1, duration: 0.4, delay: 0.1, ease: "back.out(1.7)" }
+                        );
+                    }, modalRef);
+                    return () => ctx.revert();
+                }
+            }, [selectedDoc]);
+
             const handleFileUpload = (e) => {
                 const file = e.target.files[0];
                 if (!file) return;
                 const reader = new FileReader();
                 reader.onloadend = () => {
-                    setTripData(prev => ({ ...prev, documents: [...prev.documents, { id: generateId(), name: file.name, type: file.type.startsWith('image/') ? 'image' : 'file', data: reader.result, date: new Date().toLocaleDateString() }] }));
+                    setTripData(prev => ({
+                        ...prev,
+                        documents: [...prev.documents, {
+                            id: Date.now(),
+                            name: file.name,
+                            type: file.type.startsWith('image/') ? 'image' : 'file',
+                            data: reader.result,
+                            date: new Date().toLocaleDateString()
+                        }]
+                    }));
                 };
                 reader.readAsDataURL(file);
             };
-            const deleteDoc = (id) => { if (confirm('ลบเอกสาร?')) setTripData(prev => ({ ...prev, documents: prev.documents.filter(d => d.id !== id) })); };
+
+            const deleteDoc = (id, e) => {
+                e.stopPropagation();
+                if (confirm('ลบเอกสาร?')) {
+                    setTripData(prev => ({ ...prev, documents: prev.documents.filter(d => d.id !== id) }));
+                }
+            };
 
             return (
-                <div className="p-4 pb-24 pt-6">
-                    <h2 className="text-2xl font-bold mb-6 text-gray-800 dark:text-white">เอกสาร</h2>
-                    <button onClick={() => fileInputRef.current.click()} className="w-full bg-white dark:bg-gray-800 border-2 border-dashed border-blue-300 dark:border-blue-700 rounded-xl p-6 flex flex-col items-center justify-center text-blue-500 dark:text-blue-400 mb-6 hover:bg-blue-50 dark:hover:bg-gray-700 transition-colors">
-                        <i className="fa-solid fa-cloud-arrow-up text-3xl mb-2"></i><span className="font-bold">เพิ่มรูป/ตั๋ว</span>
+                <div className="p-4 pb-24 pt-6 max-w-2xl mx-auto">
+                    <h2 className="text-3xl font-black mb-6 text-gray-800 dark:text-white tracking-tight">คลังเอกสาร</h2>
+
+                    <button
+                        onClick={() => fileInputRef.current.click()}
+                        className="group w-full bg-white dark:bg-gray-800 border-2 border-dashed border-blue-200 dark:border-blue-900/50 rounded-[2rem] p-8 flex flex-col items-center justify-center text-blue-500 dark:text-blue-400 mb-8 hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/10 transition-all duration-300 shadow-sm"
+                    >
+                        <div className="w-16 h-16 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                            <i className="fa-solid fa-cloud-arrow-up text-2xl"></i>
+                        </div>
+                        <span className="font-bold text-lg">เพิ่มรูปภาพหรือตั๋วเดินทาง</span>
+                        <p className="text-xs text-gray-400 mt-1">รองรับไฟล์รูปภาพ และ PDF (เก็บในเครื่องแบบถาวร)</p>
                         <input type="file" ref={fileInputRef} className="hidden" accept="image/*,.pdf" onChange={handleFileUpload} />
                     </button>
-                    <div className="space-y-4">
+
+                    <div className="grid grid-cols-1 gap-4">
                         {tripData.documents.map(doc => (
-                            <div key={doc.id} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm overflow-hidden border border-gray-100 dark:border-gray-700">
-                                {doc.type === 'image' && <img src={doc.data} className="w-full h-48 object-cover" />}
-                                <div className="p-4 flex justify-between items-center text-gray-800 dark:text-white">
-                                    <h4 className="font-bold truncate w-48">{doc.name}</h4>
-                                    <div className="space-x-3"><a href={doc.data} download={doc.name} className="text-blue-500"><i className="fa-solid fa-download"></i></a><button onClick={() => deleteDoc(doc.id)} className="text-red-500"><i className="fa-solid fa-trash"></i></button></div>
+                            <div
+                                key={doc.id}
+                                onClick={() => doc.type === 'image' && setSelectedDoc(doc)}
+                                className={`group bg-white dark:bg-gray-800 rounded-3xl shadow-sm overflow-hidden border border-gray-100 dark:border-gray-700 hover:shadow-xl transition-all duration-300 ${doc.type === 'image' ? 'cursor-zoom-in' : ''}`}
+                            >
+                                <div className="flex items-center p-4">
+                                    <div className="w-16 h-16 rounded-2xl overflow-hidden bg-gray-100 dark:bg-gray-700 flex-shrink-0 mr-4">
+                                        {doc.type === 'image' ? (
+                                            <img src={doc.data} className="w-full h-full object-cover" alt="preview" />
+                                        ) : (
+                                            <div className="w-full h-full flex items-center justify-center text-gray-400">
+                                                <i className="fa-solid fa-file-pdf text-2xl"></i>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <div className="flex-1 min-w-0">
+                                        <h4 className="font-bold text-gray-800 dark:text-white truncate pr-2">{doc.name}</h4>
+                                        <p className="text-xs text-gray-400 font-medium">{doc.date}</p>
+                                    </div>
+
+                                    <div className="flex items-center space-x-2">
+                                        <a
+                                            href={doc.data}
+                                            download={doc.name}
+                                            onClick={(e) => e.stopPropagation()}
+                                            className="w-10 h-10 rounded-full flex items-center justify-center text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors"
+                                        >
+                                            <i className="fa-solid fa-download"></i>
+                                        </a>
+                                        <button
+                                            onClick={(e) => deleteDoc(doc.id, e)}
+                                            className="w-10 h-10 rounded-full flex items-center justify-center text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors"
+                                        >
+                                            <i className="fa-solid fa-trash-can"></i>
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         ))}
                     </div>
+
+                    {selectedDoc && (
+                        <div
+                            ref={modalRef}
+                            className="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-12 bg-black/90 backdrop-blur-xl"
+                            onClick={() => setSelectedDoc(null)}
+                        >
+                            <button className="absolute top-6 right-6 text-white text-3xl opacity-70 hover:opacity-100 transition-opacity">
+                                <i className="fa-solid fa-xmark"></i>
+                            </button>
+
+                            <div className="relative max-w-5xl w-full h-full flex flex-col items-center justify-center">
+                                <img
+                                    ref={modalImgRef}
+                                    src={selectedDoc.data}
+                                    className="max-w-full max-h-[85vh] rounded-xl shadow-2xl object-contain"
+                                    onClick={(e) => e.stopPropagation()}
+                                    alt="Full preview"
+                                />
+                                <div className="mt-6 text-center">
+                                    <h3 className="text-white font-bold text-xl">{selectedDoc.name}</h3>
+                                    <p className="text-gray-400 text-sm mt-1">อัปโหลดเมื่อ {selectedDoc.date}</p>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </div>
             );
         };
 
-        // 8. Weather View
+        // 9. Weather View
         const WeatherView = ({ tripData }) => {
             const [data, setData] = useState(null);
             const [loading, setLoading] = useState(false);
             const [searchQuery, setSearchQuery] = useState(tripData.destination ? tripData.destination.split(',')[0] : "Bangkok");
-            const [locationInfo, setLocationInfo] = useState({ name: tripData.destination || "Bangkok", lat: tripData.lat || 13.7563, lon: tripData.lon || 100.5018 });
+            const [locationInfo, setLocationInfo] = useState({
+                name: tripData.destination || "Bangkok",
+                lat: tripData.lat || 13.7563, lon: tripData.lon || 100.5018
+            });
+
+            const containerRef = useRef(null);
+
+            useLayoutEffect(() => {
+                if (!loading && data) {
+                    let ctx = gsap.context(() => {
+                        gsap.from(".reveal", {
+                            y: 40,
+                            opacity: 0,
+                            duration: 0.8,
+                            stagger: 0.1,
+                            ease: "power4.out"
+                        });
+                        gsap.from(".temp-number", {
+                            textContent: 0,
+                            duration: 1.5,
+                            snap: { textContent: 1 },
+                            ease: "power3.out"
+                        });
+                    }, containerRef);
+                    return () => ctx.revert();
+                }
+            }, [loading, data]);
+
+            const handleSearch = async (e) => {
+                if (e) e.preventDefault();
+                if (!searchQuery.trim()) return;
+                setLoading(true);
+                try {
+                    const coords = await getCoordinates(searchQuery);
+                    if (coords) {
+                        const newLocation = { name: `${coords.name}, ${coords.country}`, lat: coords.lat, lon: coords.lon };
+                        setLocationInfo(newLocation);
+                        const weatherRes = await getWeather(coords.lat, coords.lon);
+                        setData(weatherRes);
+                    } else alert("ไม่พบเมืองที่คุณค้นหา");
+                } catch (error) { console.error(error); } finally { setLoading(false); }
+            };
 
             useEffect(() => { fetchWeather(); }, []);
+
             const fetchWeather = async () => {
                 setLoading(true);
                 const res = await getWeather(locationInfo.lat, locationInfo.lon);
                 setData(res);
                 setLoading(false);
             };
-            const handleSearch = async (e) => {
-                e.preventDefault(); setLoading(true);
-                const coords = await getCoordinates(searchQuery);
-                if (coords) {
-                    setLocationInfo({ name: `${coords.name}, ${coords.country}`, lat: coords.lat, lon: coords.lon });
-                    setData(await getWeather(coords.lat, coords.lon));
-                } else alert("ไม่พบเมือง");
-                setLoading(false);
+
+            const getPackingAdvice = (code, temp) => {
+                if (code >= 61) return { text: "ควรพกร่ม/เสื้อกันฝน", icon: "fa-umbrella" };
+                if (temp > 30) return { text: "อากาศร้อน: เสื้อผ้าบางเบา & กันแดด", icon: "fa-sun" };
+                if (temp < 15) return { text: "อากาศเย็น: เตรียมเสื้อคลุม", icon: "fa-shirt" };
+                return { text: "อากาศกำลังดี: แต่งตัวตามสบาย", icon: "fa-check" };
             };
 
             return (
-                <div className="p-4 pb-24 pt-6">
-                    <h2 className="text-2xl font-bold mb-4 text-gray-800 dark:text-white">พยากรณ์อากาศ</h2>
-                    <form onSubmit={handleSearch} className="flex gap-2 mb-6">
-                        <input type="text" className="flex-1 p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-800 dark:text-white shadow-sm" placeholder="ระบุชื่อเมือง (อังกฤษ)" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
-                        <button type="submit" className="bg-blue-600 dark:bg-blue-500 text-white px-4 rounded-xl shadow-lg"><i className="fa-solid fa-magnifying-glass"></i></button>
-                    </form>
-                    <div className="mb-4 flex items-center text-gray-600 dark:text-gray-300"><i className="fa-solid fa-location-dot mr-2 text-red-500"></i><span className="font-bold">{locationInfo.name}</span></div>
-                    {loading ? <div className="flex justify-center mt-20"><i className="fa-solid fa-circle-notch fa-spin text-4xl text-blue-500"></i></div> : data && data.weather ? (
-                        <div>
-                            {data.weather.current && (
-                                <div className="bg-gradient-to-br from-blue-500 to-indigo-600 dark:from-blue-700 dark:to-indigo-900 text-white p-6 rounded-2xl shadow-lg mb-6 flex items-center justify-between">
-                                    <div><p className="text-sm opacity-80 mb-1">ขณะนี้</p><h3 className="text-4xl font-bold">{data.weather.current.temperature_2m}°C</h3><p className="mt-2 text-sm"><i className="fa-solid fa-droplet mr-1"></i> ความชื้น {data.weather.current.relative_humidity_2m}%</p></div>
-                                    <i className={`fa-solid ${getWeatherIcon(data.weather.current.weather_code)} text-6xl`}></i>
-                                </div>
-                            )}
-                            <h3 className="font-bold text-gray-700 dark:text-gray-300 mb-3">ล่วงหน้า 7 วัน</h3>
-                            <div className="space-y-3">
-                                {data.weather.daily.time.map((date, idx) => (
-                                    <div key={date} className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm flex items-center justify-between border border-gray-100 dark:border-gray-700">
-                                        <div className="flex items-center space-x-4">
-                                            <div className="w-10 h-10 bg-gray-50 dark:bg-gray-700 rounded-full flex items-center justify-center text-xl"><i className={`fa-solid ${getWeatherIcon(data.weather.daily.weathercode[idx])}`}></i></div>
-                                            <div>
-                                                <p className="font-bold text-gray-800 dark:text-white">{new Date(date).toLocaleDateString('th-TH', { weekday: 'long', day: 'numeric' })}</p>
-                                                <p className="text-xs text-gray-500 dark:text-gray-400"><span className="text-red-400">สูง {data.weather.daily.temperature_2m_max[idx]}°</span> / <span className="text-blue-400"> ต่ำ {data.weather.daily.temperature_2m_min[idx]}°</span></p>
-                                            </div>
-                                        </div>
-                                        {data.weather.daily.precipitation_probability_max[idx] > 0 && <div className="text-xs text-blue-500 dark:text-blue-300 font-bold bg-blue-50 dark:bg-blue-900/30 px-2 py-1 rounded"><i className="fa-solid fa-umbrella mr-1"></i>{data.weather.daily.precipitation_probability_max[idx]}%</div>}
+                <div ref={containerRef} className="p-5 pb-32 space-y-6">
+                    <div className="reveal flex flex-col md:flex-row md:items-center justify-between gap-4">
+                        <h2 className="text-3xl font-black bg-gradient-to-r from-gray-800 to-gray-500 dark:from-white dark:to-gray-400 bg-clip-text text-transparent">Weather Hub</h2>
+                        <form onSubmit={handleSearch} className="relative w-full md:w-72">
+                            <input type="text" className="w-full bg-white dark:bg-gray-800 border-none rounded-2xl p-4 shadow-sm focus:ring-2 ring-blue-500 transition-all text-sm" placeholder="Search city..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+                            <button className="absolute right-3 top-1/2 -translate-y-1/2 text-blue-500"><i className="fa-solid fa-magnifying-glass"></i></button>
+                        </form>
+                    </div>
+
+                    {loading ? (
+                        <div className="h-96 flex items-center justify-center"><i className="fa-solid fa-spinner fa-spin text-3xl text-blue-500"></i></div>
+                    ) : data && data.weather ? (
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            <div className="reveal md:col-span-2 bg-gradient-to-br from-blue-600 to-indigo-700 p-8 rounded-[3rem] text-white shadow-2xl relative overflow-hidden min-h-[300px] flex flex-col justify-between">
+                                <div className="relative z-10">
+                                    <span className="bg-white/20 px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-widest backdrop-blur-md">{locationInfo.name}</span>
+                                    <div className="flex items-baseline mt-6">
+                                        <h1 className="temp-number text-8xl font-black">{Math.round(data.weather.current.temperature_2m)}</h1>
+                                        <span className="text-4xl font-light opacity-60">°C</span>
                                     </div>
-                                ))}
+                                </div>
+                                <div className="relative z-10 flex items-center justify-between">
+                                    <p className="text-lg opacity-90 font-medium">Clear Skies</p>
+                                    <i className={`fa-solid ${getWeatherIcon(data.weather.current.weather_code)} text-8xl drop-shadow-lg opacity-40 absolute -right-4 -bottom-4`}></i>
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="reveal bg-white dark:bg-gray-800 p-5 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-700 flex flex-col items-center justify-center">
+                                    <i className="fa-solid fa-droplet text-blue-400 mb-2"></i>
+                                    <span className="font-bold text-lg dark:text-white">{data.weather.current.relative_humidity_2m}%</span>
+                                </div>
+                                <div className="reveal bg-white dark:bg-gray-800 p-5 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-700 flex flex-col items-center justify-center">
+                                    <i className="fa-solid fa-wind text-teal-400 mb-2"></i>
+                                    <span className="font-bold text-lg dark:text-white">12 km/h</span>
+                                </div>
+                                <div className="reveal col-span-2 bg-orange-50 dark:bg-orange-900/20 p-5 rounded-3xl border border-orange-100 dark:border-orange-800 flex items-center space-x-4">
+                                    <div className="w-12 h-12 bg-orange-500 rounded-2xl flex items-center justify-center text-white text-xl">
+                                        <i className={`fa-solid ${getPackingAdvice(data.weather.current.weather_code, data.weather.current.temperature_2m).icon}`}></i>
+                                    </div>
+                                    <div>
+                                        <p className="text-[10px] uppercase font-bold text-orange-600 dark:text-orange-400">Advice</p>
+                                        <p className="text-sm font-bold text-gray-700 dark:text-gray-200">{getPackingAdvice(data.weather.current.weather_code, data.weather.current.temperature_2m).text}</p>
+                                    </div>
+                                </div>
                             </div>
                         </div>
-                    ) : <p className="text-center text-red-400">ไม่พบข้อมูล</p>}
+                    ) : null}
                 </div>
             );
         };
 
-        // 9. Settings & Share
+        // 10. Settings & Share
         const SettingsView = ({ tripData, setTripData, onCSVImport, fileInputRef }) => {
             const [importText, setImportText] = useState('');
-
             const handleExport = () => navigator.clipboard.writeText(JSON.stringify(tripData)).then(() => alert('คัดลอกข้อมูลแล้ว!'));
-
             const handleDownloadTemplate = () => {
                 const csv = "Date,Time,Activity,Location,Notes/Travel,Thai Summary,Google Map Link\n\"2026-02-27\",09:30,Arrival,Ueno,Skyliner,ถึงสถานีอุเอโนะ,";
                 const link = document.createElement("a"); link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
                 link.download = "trip_template.csv"; link.click();
             };
-
             const handleCSVExport = () => {
                 const headers = ["Date", "Time", "Activity", "Location", "Notes/Travel", "Thai Summary", "Google Map Link"];
-                const sorted = [...tripData.itinerary].sort((a, b) => new Date(`${a.date}T${a.time || '00:00'}`) - new Date(`${b.date}T${b.time || '00:00'}`));
-
+                const sorted = [...tripData.itinerary].sort((a, b) => new Date(`${a.date}T${(a.time || '00:00').split('-')[0]}`) - new Date(`${b.date}T${(b.time || '00:00').split('-')[0]}`));
                 const rows = sorted.map(item => {
-                    const escape = (t) => {
-                        if (!t) return '';
-                        const str = String(t).replace(/"/g, '""');
-                        return /[",\n]/.test(str) ? `"${str}"` : str;
-                    };
-                    return [
-                        escape(item.date), escape(item.time), escape(item.title),
-                        escape(item.location), escape(item.notes), escape(item.details),
-                        escape(item.mapUrl || '')
-                    ].join(',');
+                    const escape = (t) => { if (!t) return ''; const str = String(t).replace(/"/g, '""'); return /[",\n]/.test(str) ? `"${str}"` : str; };
+                    return [escape(item.date), escape(item.time), escape(item.title), escape(item.location), escape(item.notes), escape(item.details), escape(item.mapUrl || '')].join(',');
                 });
-
                 const csvContent = "\uFEFF" + [headers.join(','), ...rows].join('\n');
                 const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-                const link = document.createElement("a");
-                link.href = URL.createObjectURL(blob);
-                link.download = `trip_${(tripData.tripName || 'export').replace(/\s+/g, '_')}.csv`;
-                link.click();
+                const link = document.createElement("a"); link.href = URL.createObjectURL(blob);
+                link.download = `trip_${(tripData.tripName || 'export').replace(/\s+/g, '_')}.csv`; link.click();
             };
-
             const handleImport = () => { try { const p = JSON.parse(importText); if (p.itinerary) { setTripData(p); alert('Success!'); setImportText(''); } } catch (e) { alert('Error!'); } };
 
             return (
                 <div className="p-4 pb-24 pt-6">
                     <h2 className="text-2xl font-bold mb-6 text-gray-800 dark:text-white">ตั้งค่า</h2>
-
                     <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-4 mb-6 border border-gray-100 dark:border-gray-700">
                         <h3 className="font-bold mb-2 text-gray-800 dark:text-white"><i className="fa-solid fa-file-csv text-orange-500 mr-2"></i>จัดการ CSV</h3>
                         <div className="space-y-2">
@@ -856,9 +1304,7 @@
                                 <button onClick={handleDownloadTemplate} className="flex-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 py-2 rounded text-sm">โหลดฟอร์ม</button>
                                 <button onClick={() => fileInputRef.current.click()} className="flex-1 bg-orange-100 dark:bg-orange-900 text-orange-700 dark:text-orange-300 py-2 rounded text-sm font-bold">นำเข้า CSV</button>
                             </div>
-                            <button onClick={handleCSVExport} className="w-full bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400 py-2 rounded text-sm font-bold border border-green-200 dark:border-green-800 hover:bg-green-100 dark:hover:bg-green-900/50 transition-colors">
-                                <i className="fa-solid fa-file-export mr-2"></i>ส่งออกเป็น CSV
-                            </button>
+                            <button onClick={handleCSVExport} className="w-full bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400 py-2 rounded text-sm font-bold border border-green-200 dark:border-green-800">ส่งออกเป็น CSV</button>
                         </div>
                     </div>
                     <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-4 mb-6 border border-gray-100 dark:border-gray-700">
@@ -866,7 +1312,7 @@
                         <textarea className="w-full bg-gray-50 dark:bg-gray-700 border dark:border-gray-600 rounded p-2 text-sm h-20 text-gray-800 dark:text-white" placeholder="วางโค้ด JSON..." value={importText} onChange={e => setImportText(e.target.value)}></textarea>
                         <button onClick={handleImport} className="w-full bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 font-bold py-2 rounded-lg mt-2">นำเข้า JSON</button>
                     </div>
-                    <button onClick={() => { if (confirm('Reset App?')) { localStorage.removeItem('tripData'); window.location.reload(); } }} className="w-full text-red-500 dark:text-red-400 font-bold text-sm">ล้างข้อมูล (Reset)</button>
+                    <button onClick={() => { if (confirm('Reset App?')) { localStorage.clear(); removeFromIDB('tripData'); window.location.reload(); } }} className="w-full text-red-500 dark:text-red-400 font-bold text-sm">ล้างข้อมูลทั้งหมด (Reset)</button>
                 </div>
             );
         };
@@ -874,33 +1320,46 @@
         // --- Main App ---
         const App = () => {
             const [activeTab, setActiveTab] = useState('home');
-
-            // Logic to check if emptyTripData has been pre-filled (via export)
-            const isPreloaded = emptyTripData.tripName !== "" || emptyTripData.itinerary.length > 0;
-            const [tripData, setTripData] = useState(isPreloaded ? emptyTripData : null);
-
+            const [tripData, setTripData] = useState(null);
             const [isDarkMode, setIsDarkMode] = useState(false);
+            const [isLoading, setIsLoading] = useState(true);
             const csvInputRef = useRef(null);
 
+            // Load Initial Data
             useEffect(() => {
-                // Load Theme
-                const savedTheme = localStorage.getItem('theme');
-                if (savedTheme === 'dark') { setIsDarkMode(true); document.documentElement.classList.add('dark'); }
+                const initApp = async () => {
+                    const savedTheme = localStorage.getItem('theme');
+                    if (savedTheme === 'dark') { setIsDarkMode(true); document.documentElement.classList.add('dark'); }
 
-                // Load Data - Priority: LocalStorage > Preloaded > Null
-                const savedData = localStorage.getItem('tripData');
-                if (savedData) {
-                    try { setTripData(JSON.parse(savedData)); } catch (e) { }
-                } else if (isPreloaded) {
-                    // If preloaded data exists but nothing in localstorage, use preloaded
-                    setTripData(emptyTripData);
-                }
+                    // 1. Try IndexedDB first
+                    const savedData = await getFromIDB('tripData');
+
+                    if (savedData) {
+                        setTripData(savedData);
+                    } else {
+                        // 2. Fallback to localStorage for migration
+                        const legacyData = localStorage.getItem('tripData');
+                        if (legacyData) {
+                            try {
+                                const parsed = JSON.parse(legacyData);
+                                setTripData(parsed);
+                                // Save to IDB immediately for migration
+                                saveToIDB('tripData', parsed);
+                            } catch (e) { setTripData(null); }
+                        }
+                    }
+                    setIsLoading(false);
+                };
+                initApp();
             }, []);
 
+            // Save Data whenever it changes
             useEffect(() => {
-                if (tripData) localStorage.setItem('tripData', JSON.stringify(tripData));
+                if (!isLoading && tripData) {
+                    saveToIDB('tripData', tripData);
+                }
                 localStorage.setItem('theme', isDarkMode ? 'dark' : 'light');
-            }, [tripData, isDarkMode]);
+            }, [tripData, isDarkMode, isLoading]);
 
             const toggleTheme = () => {
                 setIsDarkMode(!isDarkMode);
@@ -910,19 +1369,7 @@
             const handleCSVImport = (e) => {
                 const file = e.target.files[0];
                 if (!file) return;
-
-                // Helper to format filename (Deduplicate and Capitalize)
-                const formatTripName = (name) => {
-                    let clean = name.replace(/\.[^/.]+$/, "");
-                    const parts = clean.split(' - ');
-                    if (parts.length > 1 && parts[0] === parts[1]) {
-                        clean = parts[0];
-                    }
-                    return clean.replace(/[-_]/g, " ").replace(/\w\S*/g, (w) => (w.replace(/^\w/, (c) => c.toUpperCase())));
-                };
-
-                const tripName = formatTripName(file.name);
-
+                const tripName = file.name.replace(/\.[^/.]+$/, "").replace(/[-_]/g, " ");
                 const reader = new FileReader();
                 reader.onload = (event) => {
                     const lines = event.target.result.split('\n');
@@ -930,91 +1377,38 @@
                     let currentDate = null;
                     let startDate = null;
                     let endDate = null;
-
                     for (let i = 1; i < lines.length; i++) {
                         const line = lines[i].trim();
                         if (!line) continue;
                         const cols = parseCSVLine(line);
                         if (cols[0] && cols[0].trim()) {
                             const d = formatDateForInput(cols[0]);
-                            if (d) {
-                                currentDate = d;
-                                if (!startDate) startDate = d;
-                                endDate = d;
-                            }
+                            if (d) { currentDate = d; if (!startDate) startDate = d; endDate = d; }
                         }
                         if (!currentDate) continue;
-
-                        let timeStr = cols[1] ? cols[1].split('-')[0].trim() : '00:00';
-                        if (!timeStr) timeStr = '00:00';
-                        const title = cols[2] ? cols[2].trim() : '';
-                        const summary = cols[5] ? cols[5].trim() : '';
-                        if (!title && !summary) continue;
-
                         newItems.push({
-                            id: generateId(),
-                            type: inferType(title + ' ' + (cols[3] || '')),
-                            title: title || 'Activity',
-                            date: currentDate,
-                            time: timeStr,
-                            location: cols[3] ? cols[3].trim() : '',
-                            details: summary || (cols[4] ? cols[4].trim() : ''),
-                            notes: cols[4] ? cols[4].trim() : '',
-                            mapUrl: cols[6] ? cols[6].trim() : ''
+                            id: generateId(), type: inferType(cols[2] || ''), title: cols[2] || cols[5] || 'Untitled',
+                            date: currentDate, time: cols[1] || '00:00', location: cols[3] || '', details: cols[5] || cols[4] || '',
+                            notes: cols[4] || '', mapUrl: cols[6] || ''
                         });
                     }
-
                     if (newItems.length > 0) {
-                        let destination = newItems[0].location || "Unknown Destination";
-                        let lat = 13.7563;
-                        let lon = 100.5018;
-
-                        // Heuristic to broader destination and auto-set coords
-                        const lowerName = tripName.toLowerCase();
-                        if (lowerName.includes("tokyo")) {
-                            destination = "Tokyo, Japan";
-                            lat = 35.6762; lon = 139.6503;
-                        } else if (lowerName.includes("osaka")) {
-                            destination = "Osaka, Japan";
-                            lat = 34.6937; lon = 135.5023;
-                        } else if (lowerName.includes("kyoto")) {
-                            destination = "Kyoto, Japan";
-                            lat = 35.0116; lon = 135.7681;
-                        } else if (lowerName.includes("japan")) {
-                            destination = "Japan";
-                            lat = 36.2048; lon = 138.2529;
-                        }
-
                         setTripData(prev => ({
-                            ...(prev || emptyTripData),
-                            tripName: tripName,
-                            startDate: startDate || "",
-                            endDate: endDate || "",
-                            destination: destination,
-                            lat: lat,
-                            lon: lon,
-                            itinerary: [...(prev?.itinerary || []), ...newItems]
+                            ...(prev || emptyTripData), tripName, startDate, endDate, itinerary: [...(prev?.itinerary || []), ...newItems]
                         }));
-                        alert(`นำเข้าสำเร็จ ${newItems.length} รายการ`);
-                    } else alert('ไม่พบข้อมูล');
-                    e.target.value = '';
+                        alert('นำเข้าสำเร็จ');
+                    }
                 };
                 reader.readAsText(file);
             };
 
-            // 2. Welcome Screen if no data
+            if (isLoading) return <div className="h-screen flex items-center justify-center dark:bg-gray-900"><i className="fa-solid fa-spinner fa-spin text-4xl text-blue-500"></i></div>;
+
             if (!tripData) {
                 return (
                     <div>
                         <input type="file" ref={csvInputRef} className="hidden" accept=".csv" onChange={handleCSVImport} />
-                        <WelcomeScreen
-                            fileInputRef={csvInputRef}
-                            onImport={() => csvInputRef.current.click()}
-                            onCreate={() => setTripData(emptyTripData)}
-                        />
-                        <button onClick={toggleTheme} className="fixed top-4 right-4 bg-gray-200 dark:bg-gray-800 p-2 rounded-full shadow-md z-50">
-                            <i className={`fa-solid ${isDarkMode ? 'fa-sun text-yellow-400' : 'fa-moon text-gray-600'}`}></i>
-                        </button>
+                        <WelcomeScreen fileInputRef={csvInputRef} onCreate={() => setTripData(emptyTripData)} />
                     </div>
                 );
             }
@@ -1022,7 +1416,7 @@
             return (
                 <div className="min-h-screen max-w-md mx-auto shadow-2xl overflow-hidden relative border-x border-gray-200 dark:border-gray-800 transition-colors duration-200">
                     <input type="file" ref={csvInputRef} className="hidden" accept=".csv" onChange={handleCSVImport} />
-                    <div className="h-full bg-gray-50 dark:bg-gray-900 transition-colors">
+                    <div className="h-full bg-gray-50 dark:bg-gray-900">
                         {activeTab === 'home' && <ItineraryView tripData={tripData} setTripData={setTripData} isDarkMode={isDarkMode} toggleTheme={toggleTheme} />}
                         {activeTab === 'day' && <DayView tripData={tripData} setTripData={setTripData} />}
                         {activeTab === 'tools' && <ToolsView tripData={tripData} setTripData={setTripData} />}
