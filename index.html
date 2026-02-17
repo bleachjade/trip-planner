@@ -1,0 +1,730 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>TripMate</title>
+    
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    
+    <!-- Babel for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        dark: {
+                            bg: '#111827',
+                            card: '#1f2937',
+                            text: '#f9fafb',
+                            subtext: '#9ca3af',
+                            border: '#374151'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600&display=swap" rel="stylesheet">
+
+    <style>
+        body {
+            font-family: 'Prompt', sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800 dark:bg-gray-900 dark:text-gray-100 transition-colors duration-200">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        // --- Helpers ---
+        const generateId = () => Math.random().toString(36).substr(2, 9);
+
+        // Empty state for new users
+        const emptyTripData = {
+            tripName: "",
+            destination: "",
+            lat: 13.7563, // Default Bangkok
+            lon: 100.5018,
+            startDate: "",
+            endDate: "",
+            itinerary: [],
+            documents: []
+        };
+
+        const parseCSVLine = (text) => {
+            const re_value = /(?!\s*$)\s*(?:'([^']*)'|"([^"]*)"|([^,'"\s\\]*(?:\s+[^,'"\s\\]+)*))\s*(?:,|$)/g;
+            const a = [];
+            text.replace(re_value, (m0, m1, m2, m3) => {
+                if (m1 !== undefined) a.push(m1.replace(/\\'/g, "'"));
+                else if (m2 !== undefined) a.push(m2.replace(/\\"/g, '"'));
+                else if (m3 !== undefined) a.push(m3);
+                return '';
+            });
+            if (/,\s*$/.test(text)) a.push('');
+            return a;
+        };
+
+        const formatDateForInput = (dateStr) => {
+            if (!dateStr) return '';
+            const d = new Date(dateStr);
+            if (isNaN(d.getTime())) return '';
+            const year = d.getFullYear();
+            const month = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        };
+
+        const inferType = (text) => {
+            const lower = text.toLowerCase();
+            if (lower.includes('flight') || lower.includes('airport') || lower.includes('arrival') || lower.includes('skyliner') || lower.includes('train')) return 'flight';
+            if (lower.includes('hotel') || lower.includes('check-in') || lower.includes('luggage')) return 'hotel';
+            if (lower.includes('lunch') || lower.includes('dinner') || lower.includes('food') || lower.includes('eat') || lower.includes('curry') || lower.includes('sushi') || lower.includes('ramen')) return 'food';
+            return 'sightseeing';
+        };
+
+        const getIconBg = (type) => {
+            switch(type) {
+                case 'flight': return 'bg-blue-100 text-blue-600 dark:bg-blue-900 dark:text-blue-300';
+                case 'hotel': return 'bg-purple-100 text-purple-600 dark:bg-purple-900 dark:text-purple-300';
+                case 'food': return 'bg-orange-100 text-orange-600 dark:bg-orange-900 dark:text-orange-300';
+                default: return 'bg-green-100 text-green-600 dark:bg-green-900 dark:text-green-300';
+            }
+        };
+        
+        const getIconClass = (type) => {
+            switch(type) {
+                case 'flight': return 'fa-plane-departure';
+                case 'hotel': return 'fa-bed';
+                case 'food': return 'fa-utensils';
+                default: return 'fa-camera';
+            }
+        };
+
+        // --- Weather Service ---
+        const getCoordinates = async (cityName) => {
+            try {
+                const res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(cityName)}&count=1&language=en&format=json`);
+                const data = await res.json();
+                if (data.results && data.results.length > 0) {
+                    return { lat: data.results[0].latitude, lon: data.results[0].longitude, name: data.results[0].name, country: data.results[0].country };
+                }
+                return null;
+            } catch (e) { console.error(e); return null; }
+        };
+
+        const getWeather = async (lat, lon) => {
+            try {
+                const weatherRes = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,weather_code&daily=weathercode,temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=auto`);
+                const weatherData = await weatherRes.json();
+                return { weather: weatherData };
+            } catch (error) { console.error(error); return null; }
+        };
+
+        const getWeatherIcon = (code) => {
+            if (code <= 1) return "fa-sun text-yellow-500";
+            if (code <= 3) return "fa-cloud-sun text-gray-400 dark:text-gray-300";
+            if (code <= 48) return "fa-smog text-gray-400";
+            if (code <= 67) return "fa-cloud-rain text-blue-400";
+            if (code <= 77) return "fa-snowflake text-blue-200";
+            if (code <= 99) return "fa-bolt text-purple-500";
+            return "fa-cloud text-gray-400";
+        };
+
+        // --- Components ---
+
+        // 0. Welcome Screen (Placeholder)
+        const WelcomeScreen = ({ onImport, onCreate, fileInputRef }) => {
+            return (
+                <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-gray-50 dark:bg-gray-900 text-center animate-fade-in">
+                    <div className="w-24 h-24 bg-blue-100 dark:bg-blue-900 rounded-full flex items-center justify-center mb-6 shadow-lg">
+                        <i className="fa-solid fa-plane-up text-4xl text-blue-600 dark:text-blue-300"></i>
+                    </div>
+                    <h1 className="text-3xl font-bold text-gray-800 dark:text-white mb-2">TripMate</h1>
+                    <p className="text-gray-500 dark:text-gray-400 mb-8 max-w-xs">วางแผนการเดินทางของคุณได้ง่ายๆ รองรับการนำเข้าไฟล์ CSV</p>
+                    
+                    <div className="space-y-4 w-full max-w-xs">
+                        <button 
+                            onClick={() => fileInputRef.current.click()}
+                            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl shadow-lg transition-transform active:scale-95 flex items-center justify-center space-x-2"
+                        >
+                            <i className="fa-solid fa-file-csv text-xl"></i>
+                            <span>นำเข้าไฟล์ CSV</span>
+                        </button>
+                        
+                        <div className="relative flex py-2 items-center">
+                            <div className="flex-grow border-t border-gray-300 dark:border-gray-700"></div>
+                            <span className="flex-shrink-0 mx-4 text-gray-400 text-sm">หรือ</span>
+                            <div className="flex-grow border-t border-gray-300 dark:border-gray-700"></div>
+                        </div>
+
+                        <button 
+                            onClick={onCreate}
+                            className="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 font-bold py-4 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                        >
+                            เริ่มทริปใหม่ (ว่างเปล่า)
+                        </button>
+                    </div>
+                </div>
+            );
+        };
+
+        // 1. Trip Item Card
+        const TripItemCard = ({ item, onEdit, onDelete, showDate = false }) => {
+            const handleMapClick = (e) => {
+                e.stopPropagation();
+                let url = item.mapUrl;
+                if (!url && item.location) {
+                    url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.location)}`;
+                }
+                if (url) window.open(url, '_blank');
+            };
+
+            return (
+                <div className="relative bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm ml-4 mb-4 border border-gray-100 dark:border-gray-700 group transition-colors">
+                    <div className={`absolute -left-[25px] top-4 w-4 h-4 rounded-full border-2 border-white dark:border-gray-900 ${getIconBg(item.type).split(' ')[0]} ${getIconBg(item.type).split(' ')[1]}`}></div>
+                    
+                    <div className="flex justify-between items-start">
+                        <div className="flex-1 pr-2">
+                            <div className="flex items-center space-x-2 mb-1 flex-wrap gap-y-1">
+                                <span className="text-sm font-bold text-gray-500 dark:text-gray-400 font-mono">{item.time}</span>
+                                <span className={`text-xs px-2 py-0.5 rounded ${getIconBg(item.type)}`}>
+                                    <i className={`fa-solid ${getIconClass(item.type)} mr-1`}></i>
+                                    {item.type.toUpperCase()}
+                                </span>
+                                {showDate && (
+                                    <span className="text-xs text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded border border-gray-200 dark:border-gray-600">
+                                        {new Date(item.date).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })}
+                                    </span>
+                                )}
+                            </div>
+                            <h4 className="font-bold text-gray-800 dark:text-white text-lg leading-tight">{item.title}</h4>
+                            
+                            {item.location && (
+                                <div className="flex items-center mt-1 text-gray-600 dark:text-gray-400 text-sm cursor-pointer hover:text-blue-500" onClick={handleMapClick}>
+                                    <i className="fa-solid fa-location-dot text-xs mr-1 text-red-400"></i> 
+                                    <span className="underline decoration-dotted">{item.location}</span>
+                                </div>
+                            )}
+                            
+                            {item.details && (
+                                <div className="mt-2 bg-gray-50 dark:bg-gray-700/50 p-2 rounded border border-gray-100 dark:border-gray-700 text-sm text-gray-600 dark:text-gray-300">
+                                    {item.details}
+                                </div>
+                            )}
+                            {item.notes && (
+                                <div className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                                    <i className="fa-solid fa-note-sticky mr-1"></i>{item.notes}
+                                </div>
+                            )}
+                        </div>
+                        
+                        <div className="flex flex-col space-y-2 ml-2">
+                             {(item.mapUrl || item.location) && (
+                                <button onClick={handleMapClick} className="w-8 h-8 rounded-full bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400 flex items-center justify-center hover:bg-green-100 dark:hover:bg-green-900/50">
+                                    <i className="fa-solid fa-map-location-dot"></i>
+                                </button>
+                            )}
+                            <button onClick={(e) => { e.stopPropagation(); onEdit(item); }} className="w-8 h-8 rounded-full bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 flex items-center justify-center hover:bg-blue-100 dark:hover:bg-blue-900/50">
+                                <i className="fa-solid fa-pen"></i>
+                            </button>
+                            <button onClick={(e) => { e.stopPropagation(); onDelete(item.id); }} className="w-8 h-8 rounded-full bg-red-50 dark:bg-red-900/30 text-red-500 dark:text-red-400 flex items-center justify-center hover:bg-red-100 dark:hover:bg-red-900/50">
+                                <i className="fa-solid fa-trash"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // 2. Navigation Bar
+        const NavBar = ({ activeTab, setActiveTab }) => {
+            const tabs = [
+                { id: 'home', icon: 'fa-map-location-dot', label: 'แผนรวม' },
+                { id: 'day', icon: 'fa-calendar-day', label: 'รายวัน' },
+                { id: 'docs', icon: 'fa-folder-open', label: 'เอกสาร' },
+                { id: 'weather', icon: 'fa-cloud-sun', label: 'อากาศ' },
+                { id: 'settings', icon: 'fa-gear', label: 'ตั้งค่า' },
+            ];
+
+            return (
+                <div className="fixed bottom-0 left-0 w-full bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 pb-safe pt-2 px-2 flex justify-between items-center z-50 h-16 shadow-lg pb-4 transition-colors">
+                    {tabs.map(tab => (
+                        <button 
+                            key={tab.id}
+                            onClick={() => setActiveTab(tab.id)}
+                            className={`flex flex-col items-center justify-center w-full space-y-1 ${activeTab === tab.id ? 'text-blue-600 dark:text-blue-400' : 'text-gray-400 dark:text-gray-500'}`}
+                        >
+                            <i className={`fa-solid ${tab.icon} text-xl transition-transform ${activeTab === tab.id ? 'scale-110' : ''}`}></i>
+                            <span className="text-[10px] font-medium">{tab.label}</span>
+                        </button>
+                    ))}
+                </div>
+            );
+        };
+
+        // 3. Add/Edit Item Modal
+        const ItemModal = ({ isOpen, onClose, onSave, initialData, defaultDate }) => {
+            if (!isOpen) return null;
+            
+            const [formData, setFormData] = useState({
+                id: null, type: 'sightseeing', title: '', date: '', time: '', location: '', details: '', notes: '', mapUrl: ''
+            });
+
+            useEffect(() => {
+                if (initialData) {
+                    setFormData(initialData);
+                } else {
+                    setFormData({
+                        id: generateId(), type: 'sightseeing', title: '',
+                        date: defaultDate || new Date().toISOString().split('T')[0],
+                        time: '', location: '', details: '', notes: '', mapUrl: ''
+                    });
+                }
+            }, [initialData, defaultDate, isOpen]);
+
+            const handleChange = (e) => setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
+            const handleSubmit = (e) => { e.preventDefault(); onSave(formData); onClose(); };
+
+            return (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
+                    <div className="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-sm p-6 shadow-2xl animate-fade-in-up max-h-[90vh] overflow-y-auto border border-gray-100 dark:border-gray-700">
+                        <h2 className="text-xl font-bold mb-4 text-gray-800 dark:text-white">{initialData ? 'แก้ไขกิจกรรม' : 'เพิ่มกิจกรรมใหม่'}</h2>
+                        <form onSubmit={handleSubmit} className="space-y-3">
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">ประเภท</label>
+                                <div className="flex space-x-2 mt-1 overflow-x-auto no-scrollbar pb-1">
+                                    {['flight','hotel','food','sightseeing'].map(t => (
+                                        <button key={t} type="button" onClick={() => setFormData({...formData, type: t})}
+                                            className={`px-3 py-2 rounded-lg text-sm flex items-center space-x-2 whitespace-nowrap border ${formData.type === t ? 'bg-blue-100 dark:bg-blue-900 border-blue-500 dark:border-blue-400 text-blue-700 dark:text-blue-300' : 'bg-gray-50 dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300'}`}>
+                                            <i className={`fa-solid ${getIconClass(t)}`}></i><span className="capitalize">{t}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                            
+                            <input required name="title" className="w-full p-3 bg-gray-50 dark:bg-gray-700 dark:text-white rounded-xl border border-gray-200 dark:border-gray-600" value={formData.title} onChange={handleChange} placeholder="ชื่อกิจกรรม" />
+                            <div className="flex space-x-2">
+                                <input required type="date" name="date" className="w-1/2 p-3 bg-gray-50 dark:bg-gray-700 dark:text-white rounded-xl border border-gray-200 dark:border-gray-600" value={formData.date} onChange={handleChange} />
+                                <input required type="time" name="time" className="w-1/2 p-3 bg-gray-50 dark:bg-gray-700 dark:text-white rounded-xl border border-gray-200 dark:border-gray-600" value={formData.time} onChange={handleChange} />
+                            </div>
+                            <input name="location" className="w-full p-3 bg-gray-50 dark:bg-gray-700 dark:text-white rounded-xl border border-gray-200 dark:border-gray-600" value={formData.location} onChange={handleChange} placeholder="สถานที่" />
+                            <input name="mapUrl" className="w-full p-3 bg-gray-50 dark:bg-gray-700 dark:text-white rounded-xl border border-gray-200 dark:border-gray-600" value={formData.mapUrl || ''} onChange={handleChange} placeholder="Google Map Link" />
+                            <textarea name="details" className="w-full p-3 bg-gray-50 dark:bg-gray-700 dark:text-white rounded-xl border border-gray-200 dark:border-gray-600 h-20" value={formData.details} onChange={handleChange} placeholder="รายละเอียด..." />
+
+                            <div className="flex space-x-3 pt-2">
+                                <button type="button" onClick={onClose} className="flex-1 py-3 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-xl">ยกเลิก</button>
+                                <button type="submit" className="flex-1 py-3 bg-blue-600 text-white rounded-xl shadow-lg">บันทึก</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            );
+        };
+
+        // 4. Itinerary View (All)
+        const ItineraryView = ({ tripData, setTripData, isDarkMode, toggleTheme }) => {
+            const [modalOpen, setModalOpen] = useState(false);
+            const [editingItem, setEditingItem] = useState(null);
+
+            const groupedItinerary = tripData.itinerary.sort((a, b) => new Date(`${a.date}T${a.time}`) - new Date(`${b.date}T${b.time}`)).reduce((groups, item) => {
+                if (!groups[item.date]) groups[item.date] = [];
+                groups[item.date].push(item);
+                return groups;
+            }, {});
+
+            const handleSave = (item) => {
+                if (editingItem) setTripData(prev => ({ ...prev, itinerary: prev.itinerary.map(i => i.id === item.id ? item : i) }));
+                else setTripData(prev => ({ ...prev, itinerary: [...prev.itinerary, item] }));
+            };
+
+            const deleteItem = (id) => { if(window.confirm('ยืนยันลบรายการนี้?')) setTripData(prev => ({ ...prev, itinerary: prev.itinerary.filter(i => i.id !== id) })); };
+
+            return (
+                <div className="pb-24 pt-4 px-4">
+                    <div className="bg-gradient-to-r from-blue-600 to-indigo-600 dark:from-blue-800 dark:to-indigo-800 rounded-2xl p-6 text-white shadow-xl mb-6 relative overflow-hidden">
+                        <div className="absolute top-4 right-4 z-20">
+                            <button onClick={toggleTheme} className="bg-white/20 hover:bg-white/30 p-2 rounded-full w-10 h-10 backdrop-blur-sm transition-colors">
+                                <i className={`fa-solid ${isDarkMode ? 'fa-sun' : 'fa-moon'}`}></i>
+                            </button>
+                        </div>
+                        <div className="absolute top-0 right-0 opacity-10 transform translate-x-4 -translate-y-4"><i className="fa-solid fa-plane text-9xl"></i></div>
+                        <h1 className="text-2xl font-bold">{tripData.tripName || "Trip Name"}</h1>
+                        <p className="opacity-90 flex items-center mt-2"><i className="fa-solid fa-location-dot mr-2"></i> {tripData.destination || "Destination"}</p>
+                        <div className="mt-4 inline-block bg-white/20 px-3 py-1 rounded-lg text-sm backdrop-blur-sm">{tripData.startDate} - {tripData.endDate}</div>
+                    </div>
+
+                    <div className="space-y-8">
+                        {Object.keys(groupedItinerary).length === 0 ? (
+                            <div className="text-center text-gray-400 dark:text-gray-500 py-10"><p>ยังไม่มีแผนการเดินทาง</p></div>
+                        ) : Object.keys(groupedItinerary).map(date => (
+                            <div key={date}>
+                                <div className="sticky top-0 bg-[#f3f4f6]/95 dark:bg-gray-900/95 backdrop-blur-sm z-10 py-2 mb-2 flex items-center transition-colors">
+                                    <div className="bg-gray-800 dark:bg-gray-700 text-white text-xs px-2 py-1 rounded mr-2 font-bold">{new Date(date).toLocaleDateString('th-TH', { weekday: 'short' })}</div>
+                                    <h3 className="text-gray-700 dark:text-gray-300 font-bold text-lg">{new Date(date).toLocaleDateString('th-TH', { day: 'numeric', month: 'long' })}</h3>
+                                </div>
+                                <div className="space-y-4 pl-2 border-l-2 border-gray-200 dark:border-gray-700 ml-2">
+                                    {groupedItinerary[date].map(item => (
+                                        <TripItemCard key={item.id} item={item} onEdit={(i) => { setEditingItem(i); setModalOpen(true); }} onDelete={deleteItem} />
+                                    ))}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                    <button onClick={() => { setEditingItem(null); setModalOpen(true); }} className="fixed bottom-20 right-4 bg-blue-600 dark:bg-blue-500 text-white w-14 h-14 rounded-full shadow-xl flex items-center justify-center text-2xl hover:bg-blue-700 dark:hover:bg-blue-600 transition-colors z-40"><i className="fa-solid fa-plus"></i></button>
+                    <ItemModal isOpen={modalOpen} onClose={() => setModalOpen(false)} onSave={handleSave} initialData={editingItem} />
+                </div>
+            );
+        };
+
+        // 5. Day View
+        const DayView = ({ tripData, setTripData }) => {
+            const [selectedDate, setSelectedDate] = useState(tripData.startDate);
+            const [modalOpen, setModalOpen] = useState(false);
+            const [editingItem, setEditingItem] = useState(null);
+
+            const dates = Array.from(new Set([...tripData.itinerary.map(i => i.date), tripData.startDate, tripData.endDate].filter(d => d))).sort();
+            const items = tripData.itinerary.filter(i => i.date === selectedDate).sort((a, b) => a.time.localeCompare(b.time));
+
+            const handleSave = (item) => {
+                if (editingItem) setTripData(prev => ({ ...prev, itinerary: prev.itinerary.map(i => i.id === item.id ? item : i) }));
+                else setTripData(prev => ({ ...prev, itinerary: [...prev.itinerary, item] }));
+            };
+            const deleteItem = (id) => { if(window.confirm('ยืนยันลบ?')) setTripData(prev => ({ ...prev, itinerary: prev.itinerary.filter(i => i.id !== id) })); };
+
+            return (
+                <div className="pb-24 pt-4 px-4 h-full flex flex-col">
+                    <h2 className="text-2xl font-bold mb-4 text-gray-800 dark:text-white px-2">รายวัน</h2>
+                    <div className="flex overflow-x-auto no-scrollbar space-x-3 mb-6 px-2 pb-2">
+                        {dates.map(date => {
+                            const d = new Date(date);
+                            const isSelected = date === selectedDate;
+                            return (
+                                <button key={date} onClick={() => setSelectedDate(date)} className={`flex-shrink-0 flex flex-col items-center justify-center w-16 h-16 rounded-2xl transition-all ${isSelected ? 'bg-blue-600 dark:bg-blue-500 text-white shadow-lg scale-105' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 border border-gray-100 dark:border-gray-700'}`}>
+                                    <span className="text-[10px] uppercase font-bold">{d.toLocaleDateString('en-US', { weekday: 'short' })}</span>
+                                    <span className="text-xl font-bold">{d.getDate()}</span>
+                                </button>
+                            );
+                        })}
+                    </div>
+                    <div className="flex-1 space-y-4 pl-2 border-l-2 border-gray-200 dark:border-gray-700 ml-2">
+                        {items.length === 0 ? <div className="text-center text-gray-400 dark:text-gray-500 py-10"><p>วันนี้ว่าง!</p></div> : items.map(item => <TripItemCard key={item.id} item={item} onEdit={(i) => { setEditingItem(i); setModalOpen(true); }} onDelete={deleteItem} />)}
+                    </div>
+                    <button onClick={() => { setEditingItem(null); setModalOpen(true); }} className="fixed bottom-20 right-4 bg-blue-600 dark:bg-blue-500 text-white w-14 h-14 rounded-full shadow-xl flex items-center justify-center text-2xl hover:bg-blue-700 z-40"><i className="fa-solid fa-plus"></i></button>
+                    <ItemModal isOpen={modalOpen} onClose={() => setModalOpen(false)} onSave={handleSave} initialData={editingItem} defaultDate={selectedDate} />
+                </div>
+            );
+        };
+
+        // 6. Documents View
+        const DocumentsView = ({ tripData, setTripData }) => {
+            const fileInputRef = useRef(null);
+            const handleFileUpload = (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                    setTripData(prev => ({ ...prev, documents: [...prev.documents, { id: generateId(), name: file.name, type: file.type.startsWith('image/') ? 'image' : 'file', data: reader.result, date: new Date().toLocaleDateString() }] }));
+                };
+                reader.readAsDataURL(file);
+            };
+            const deleteDoc = (id) => { if(confirm('ลบเอกสาร?')) setTripData(prev => ({ ...prev, documents: prev.documents.filter(d => d.id !== id) })); };
+
+            return (
+                <div className="p-4 pb-24 pt-6">
+                    <h2 className="text-2xl font-bold mb-6 text-gray-800 dark:text-white">เอกสาร</h2>
+                    <button onClick={() => fileInputRef.current.click()} className="w-full bg-white dark:bg-gray-800 border-2 border-dashed border-blue-300 dark:border-blue-700 rounded-xl p-6 flex flex-col items-center justify-center text-blue-500 dark:text-blue-400 mb-6 hover:bg-blue-50 dark:hover:bg-gray-700 transition-colors">
+                        <i className="fa-solid fa-cloud-arrow-up text-3xl mb-2"></i><span className="font-bold">เพิ่มรูป/ตั๋ว</span>
+                        <input type="file" ref={fileInputRef} className="hidden" accept="image/*,.pdf" onChange={handleFileUpload} />
+                    </button>
+                    <div className="space-y-4">
+                        {tripData.documents.map(doc => (
+                            <div key={doc.id} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm overflow-hidden border border-gray-100 dark:border-gray-700">
+                                {doc.type === 'image' && <img src={doc.data} className="w-full h-48 object-cover" />}
+                                <div className="p-4 flex justify-between items-center text-gray-800 dark:text-white">
+                                    <h4 className="font-bold truncate w-48">{doc.name}</h4>
+                                    <div className="space-x-3"><a href={doc.data} download={doc.name} className="text-blue-500"><i className="fa-solid fa-download"></i></a><button onClick={() => deleteDoc(doc.id)} className="text-red-500"><i className="fa-solid fa-trash"></i></button></div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+        };
+
+        // 7. Weather View
+        const WeatherView = ({ tripData }) => {
+            const [data, setData] = useState(null);
+            const [loading, setLoading] = useState(false);
+            const [searchQuery, setSearchQuery] = useState(tripData.destination ? tripData.destination.split(',')[0] : "Bangkok");
+            const [locationInfo, setLocationInfo] = useState({ name: tripData.destination || "Bangkok", lat: tripData.lat || 13.7563, lon: tripData.lon || 100.5018 });
+
+            useEffect(() => { fetchWeather(); }, []);
+            const fetchWeather = async () => {
+                setLoading(true);
+                const res = await getWeather(locationInfo.lat, locationInfo.lon);
+                setData(res);
+                setLoading(false);
+            };
+            const handleSearch = async (e) => {
+                e.preventDefault(); setLoading(true);
+                const coords = await getCoordinates(searchQuery);
+                if (coords) {
+                    setLocationInfo({ name: `${coords.name}, ${coords.country}`, lat: coords.lat, lon: coords.lon });
+                    setData(await getWeather(coords.lat, coords.lon));
+                } else alert("ไม่พบเมือง");
+                setLoading(false);
+            };
+
+            return (
+                <div className="p-4 pb-24 pt-6">
+                    <h2 className="text-2xl font-bold mb-4 text-gray-800 dark:text-white">พยากรณ์อากาศ</h2>
+                    <form onSubmit={handleSearch} className="flex gap-2 mb-6">
+                        <input type="text" className="flex-1 p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-800 dark:text-white shadow-sm" placeholder="ระบุชื่อเมือง (อังกฤษ)" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+                        <button type="submit" className="bg-blue-600 dark:bg-blue-500 text-white px-4 rounded-xl shadow-lg"><i className="fa-solid fa-magnifying-glass"></i></button>
+                    </form>
+                    <div className="mb-4 flex items-center text-gray-600 dark:text-gray-300"><i className="fa-solid fa-location-dot mr-2 text-red-500"></i><span className="font-bold">{locationInfo.name}</span></div>
+                    {loading ? <div className="flex justify-center mt-20"><i className="fa-solid fa-circle-notch fa-spin text-4xl text-blue-500"></i></div> : data && data.weather ? (
+                        <div>
+                            {data.weather.current && (
+                                <div className="bg-gradient-to-br from-blue-500 to-indigo-600 dark:from-blue-700 dark:to-indigo-900 text-white p-6 rounded-2xl shadow-lg mb-6 flex items-center justify-between">
+                                    <div><p className="text-sm opacity-80 mb-1">ขณะนี้</p><h3 className="text-4xl font-bold">{data.weather.current.temperature_2m}°C</h3><p className="mt-2 text-sm"><i className="fa-solid fa-droplet mr-1"></i> ความชื้น {data.weather.current.relative_humidity_2m}%</p></div>
+                                    <i className={`fa-solid ${getWeatherIcon(data.weather.current.weather_code)} text-6xl`}></i>
+                                </div>
+                            )}
+                            <h3 className="font-bold text-gray-700 dark:text-gray-300 mb-3">ล่วงหน้า 7 วัน</h3>
+                            <div className="space-y-3">
+                                {data.weather.daily.time.map((date, idx) => (
+                                    <div key={date} className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm flex items-center justify-between border border-gray-100 dark:border-gray-700">
+                                        <div className="flex items-center space-x-4">
+                                            <div className="w-10 h-10 bg-gray-50 dark:bg-gray-700 rounded-full flex items-center justify-center text-xl"><i className={`fa-solid ${getWeatherIcon(data.weather.daily.weathercode[idx])}`}></i></div>
+                                            <div>
+                                                <p className="font-bold text-gray-800 dark:text-white">{new Date(date).toLocaleDateString('th-TH', { weekday: 'long', day: 'numeric'})}</p>
+                                                <p className="text-xs text-gray-500 dark:text-gray-400"><span className="text-red-400">สูง {data.weather.daily.temperature_2m_max[idx]}°</span> / <span className="text-blue-400"> ต่ำ {data.weather.daily.temperature_2m_min[idx]}°</span></p>
+                                            </div>
+                                        </div>
+                                        {data.weather.daily.precipitation_probability_max[idx] > 0 && <div className="text-xs text-blue-500 dark:text-blue-300 font-bold bg-blue-50 dark:bg-blue-900/30 px-2 py-1 rounded"><i className="fa-solid fa-umbrella mr-1"></i>{data.weather.daily.precipitation_probability_max[idx]}%</div>}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    ) : <p className="text-center text-red-400">ไม่พบข้อมูล</p>}
+                </div>
+            );
+        };
+
+        // 8. Settings & Share
+        const SettingsView = ({ tripData, setTripData, onCSVImport, fileInputRef }) => {
+            const [importText, setImportText] = useState('');
+            const handleExport = () => navigator.clipboard.writeText(JSON.stringify(tripData)).then(() => alert('คัดลอกข้อมูลแล้ว!'));
+            const handleDownloadTemplate = () => {
+                const csv = "Date,Time,Activity,Location,Notes/Travel,Thai Summary\n\"2026-02-27\",09:30,Arrival,Ueno,Skyliner,ถึงสถานีอุเอโนะ";
+                const link = document.createElement("a"); link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
+                link.download = "trip_template.csv"; link.click();
+            };
+            const handleImport = () => { try { const p = JSON.parse(importText); if (p.itinerary) { setTripData(p); alert('Success!'); setImportText(''); } } catch (e) { alert('Error!'); } };
+
+            return (
+                <div className="p-4 pb-24 pt-6">
+                    <h2 className="text-2xl font-bold mb-6 text-gray-800 dark:text-white">ตั้งค่า</h2>
+                    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-4 mb-6 border border-gray-100 dark:border-gray-700">
+                        <h3 className="font-bold mb-2 text-gray-800 dark:text-white"><i className="fa-solid fa-file-csv text-orange-500 mr-2"></i>นำเข้า CSV</h3>
+                        <div className="flex space-x-2">
+                            <button onClick={handleDownloadTemplate} className="flex-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 py-2 rounded text-sm">โหลดฟอร์ม</button>
+                            <button onClick={() => fileInputRef.current.click()} className="flex-1 bg-orange-100 dark:bg-orange-900 text-orange-700 dark:text-orange-300 py-2 rounded text-sm font-bold">เลือกไฟล์</button>
+                        </div>
+                    </div>
+                    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-4 mb-6 border border-gray-100 dark:border-gray-700">
+                        <button onClick={handleExport} className="w-full bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 font-bold py-3 rounded-lg mb-2">คัดลอก JSON</button>
+                        <textarea className="w-full bg-gray-50 dark:bg-gray-700 border dark:border-gray-600 rounded p-2 text-sm h-20 text-gray-800 dark:text-white" placeholder="วางโค้ด JSON..." value={importText} onChange={e => setImportText(e.target.value)}></textarea>
+                        <button onClick={handleImport} className="w-full bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 font-bold py-2 rounded-lg mt-2">นำเข้า JSON</button>
+                    </div>
+                    <button onClick={() => { if(confirm('Reset App?')) { localStorage.removeItem('tripData'); window.location.reload(); } }} className="w-full text-red-500 dark:text-red-400 font-bold text-sm">ล้างข้อมูล (Reset)</button>
+                </div>
+            );
+        };
+
+        // --- Main App ---
+        const App = () => {
+            const [activeTab, setActiveTab] = useState('home');
+            const [tripData, setTripData] = useState(null); // Null means show Welcome Screen
+            const [isDarkMode, setIsDarkMode] = useState(false);
+            const csvInputRef = useRef(null);
+
+            useEffect(() => {
+                // Load Theme
+                const savedTheme = localStorage.getItem('theme');
+                if (savedTheme === 'dark') { setIsDarkMode(true); document.documentElement.classList.add('dark'); }
+                
+                // Load Data
+                const savedData = localStorage.getItem('tripData');
+                if (savedData) {
+                    try { setTripData(JSON.parse(savedData)); } catch(e){}
+                }
+            }, []);
+
+            useEffect(() => {
+                if (tripData) localStorage.setItem('tripData', JSON.stringify(tripData));
+                localStorage.setItem('theme', isDarkMode ? 'dark' : 'light');
+            }, [tripData, isDarkMode]);
+
+            const toggleTheme = () => {
+                setIsDarkMode(!isDarkMode);
+                document.documentElement.classList.toggle('dark');
+            };
+
+            const handleCSVImport = (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                // Helper to format filename (Deduplicate and Capitalize)
+                const formatTripName = (name) => {
+                    // Remove extension
+                    let clean = name.replace(/\.[^/.]+$/, "");
+                    
+                    // Handle "Name - Name" duplication pattern
+                    const parts = clean.split(' - ');
+                    if (parts.length > 1 && parts[0] === parts[1]) {
+                        clean = parts[0];
+                    }
+                    
+                    // Replace hyphens/underscores and capitalize
+                    return clean
+                        .replace(/[-_]/g, " ")
+                        .replace(/\w\S*/g, (w) => (w.replace(/^\w/, (c) => c.toUpperCase())));
+                };
+
+                const tripName = formatTripName(file.name);
+
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    const lines = event.target.result.split('\n');
+                    const newItems = [];
+                    let currentDate = null;
+                    let startDate = null;
+                    let endDate = null;
+
+                    for (let i = 1; i < lines.length; i++) {
+                        const line = lines[i].trim();
+                        if (!line) continue;
+                        const cols = parseCSVLine(line);
+                        if (cols[0] && cols[0].trim()) {
+                            const d = formatDateForInput(cols[0]);
+                            if(d) {
+                                currentDate = d;
+                                if (!startDate) startDate = d;
+                                endDate = d; // Updates until the last date
+                            }
+                        }
+                        if (!currentDate) continue;
+                        
+                        let timeStr = cols[1] ? cols[1].split('-')[0].trim() : '00:00';
+                        if(!timeStr) timeStr = '00:00';
+                        const title = cols[2] ? cols[2].trim() : '';
+                        const summary = cols[5] ? cols[5].trim() : '';
+                        if (!title && !summary) continue;
+
+                        newItems.push({
+                            id: generateId(),
+                            type: inferType(title + ' ' + (cols[3] || '')),
+                            title: title || 'Activity',
+                            date: currentDate,
+                            time: timeStr,
+                            location: cols[3] ? cols[3].trim() : '',
+                            details: summary || (cols[4] ? cols[4].trim() : ''),
+                            notes: cols[4] ? cols[4].trim() : '',
+                            mapUrl: ''
+                        });
+                    }
+
+                    if (newItems.length > 0) {
+                        let destination = newItems[0].location || "Unknown Destination";
+                        let lat = 13.7563;
+                        let lon = 100.5018;
+
+                        // Heuristic to broader destination and auto-set coords
+                        const lowerName = tripName.toLowerCase();
+                        if (lowerName.includes("tokyo")) {
+                            destination = "Tokyo, Japan";
+                            lat = 35.6762; lon = 139.6503;
+                        } else if (lowerName.includes("osaka")) {
+                            destination = "Osaka, Japan";
+                            lat = 34.6937; lon = 135.5023;
+                        } else if (lowerName.includes("kyoto")) {
+                            destination = "Kyoto, Japan";
+                            lat = 35.0116; lon = 135.7681;
+                        } else if (lowerName.includes("japan")) {
+                            destination = "Japan";
+                            lat = 36.2048; lon = 138.2529;
+                        }
+
+                        setTripData(prev => ({ 
+                            ...(prev || emptyTripData),
+                            tripName: tripName,
+                            startDate: startDate || "",
+                            endDate: endDate || "",
+                            destination: destination,
+                            lat: lat,
+                            lon: lon,
+                            itinerary: [...(prev?.itinerary || []), ...newItems] 
+                        }));
+                        alert(`นำเข้าสำเร็จ ${newItems.length} รายการ`);
+                    } else alert('ไม่พบข้อมูล');
+                    e.target.value = '';
+                };
+                reader.readAsText(file);
+            };
+
+            // Render Welcome Screen if no data
+            if (!tripData) {
+                return (
+                    <div>
+                        <input type="file" ref={csvInputRef} className="hidden" accept=".csv" onChange={handleCSVImport} />
+                        <WelcomeScreen 
+                            fileInputRef={csvInputRef}
+                            onImport={() => csvInputRef.current.click()} 
+                            onCreate={() => setTripData(emptyTripData)} 
+                        />
+                        <button onClick={toggleTheme} className="fixed top-4 right-4 bg-gray-200 dark:bg-gray-800 p-2 rounded-full shadow-md z-50">
+                            <i className={`fa-solid ${isDarkMode ? 'fa-sun text-yellow-400' : 'fa-moon text-gray-600'}`}></i>
+                        </button>
+                    </div>
+                );
+            }
+
+            return (
+                <div className="min-h-screen max-w-md mx-auto shadow-2xl overflow-hidden relative border-x border-gray-200 dark:border-gray-800 transition-colors duration-200">
+                    <input type="file" ref={csvInputRef} className="hidden" accept=".csv" onChange={handleCSVImport} />
+                    <div className="h-full bg-gray-50 dark:bg-gray-900 transition-colors">
+                        {activeTab === 'home' && <ItineraryView tripData={tripData} setTripData={setTripData} isDarkMode={isDarkMode} toggleTheme={toggleTheme} />}
+                        {activeTab === 'day' && <DayView tripData={tripData} setTripData={setTripData} />}
+                        {activeTab === 'docs' && <DocumentsView tripData={tripData} setTripData={setTripData} />}
+                        {activeTab === 'weather' && <WeatherView tripData={tripData} />}
+                        {activeTab === 'settings' && <SettingsView tripData={tripData} setTripData={setTripData} onCSVImport={handleCSVImport} fileInputRef={csvInputRef} />}
+                    </div>
+                    <NavBar activeTab={activeTab} setActiveTab={setActiveTab} />
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
